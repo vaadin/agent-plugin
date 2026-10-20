@@ -1,0 +1,20 @@
+{
+  "name": "vaadin-dev",
+  "interface": {
+    "displayName": "Vaadin (development)"
+  },
+  "plugins": [
+    {
+      "name": "vaadin",
+      "source": {
+        "source": "local",
+        "path": "./plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

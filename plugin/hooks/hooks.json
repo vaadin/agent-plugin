@@ -1,0 +1,17 @@
+{
+  "description": "Vaadin styling checks (theme mixing, Aura usage) after edits that touch Vaadin styling.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/cli/vaadin-agent-tools\" hook post-tool-use",
+            "statusMessage": "Checking Vaadin styling"
+          }
+        ]
+      }
+    ]
+  }
+}

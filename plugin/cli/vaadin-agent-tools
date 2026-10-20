@@ -1,0 +1,44 @@
+#!/bin/sh
+# Selector for the vaadin-agent-tools plugin.
+#
+# Execs the bundled native binary for this OS/arch. It only ever runs code
+# shipped INSIDE this plugin (cli/platform/) — it never searches $HOME or PATH
+# for a runtime, and needs neither Node nor a JVM.
+set -e
+
+DIR="$(cd -P "$(dirname "$0")" && pwd)"
+P="$DIR/platform"
+os="$(uname -s)"
+arch="$(uname -m)"
+BIN=""
+
+case "$os" in
+  Darwin)
+    if [ -x "$P/vaadin-agent-tools-darwin" ]; then
+      BIN="$P/vaadin-agent-tools-darwin" # universal (arm64 + amd64)
+    else
+      case "$arch" in
+        arm64)        BIN="$P/vaadin-agent-tools-darwin-arm64" ;;
+        x86_64|amd64) BIN="$P/vaadin-agent-tools-darwin-amd64" ;;
+      esac
+    fi
+    ;;
+  Linux)
+    case "$arch" in
+      x86_64|amd64)  BIN="$P/vaadin-agent-tools-linux-amd64" ;;
+      aarch64|arm64) BIN="$P/vaadin-agent-tools-linux-arm64" ;;
+    esac
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    # Git Bash on Windows, which Claude Code uses for Bash tool calls and hooks.
+    BIN="$P/vaadin-agent-tools-windows-amd64.exe"
+    ;;
+esac
+
+if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
+  echo "vaadin-agent-tools: no bundled binary for $os/$arch." >&2
+  echo "Rebuild with go/build.sh, or add the target to the build matrix." >&2
+  exit 2
+fi
+
+exec "$BIN" "$@"
