@@ -1,0 +1,17 @@
+{
+  "name": "vaadin-dev",
+  "owner": {
+    "name": "Vaadin"
+  },
+  "metadata": {
+    "description": "Development marketplace for testing the Vaadin plugin from a checkout. Users install the plugin from the official Claude plugin directory."
+  },
+  "plugins": [
+    {
+      "name": "vaadin",
+      "source": "./plugin",
+      "description": "Vaadin plugin, built from this checkout.",
+      "category": "development"
+    }
+  ]
+}

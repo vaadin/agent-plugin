@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  plugin:
+    name: Plugin manifests and skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check plugin/
+        run: python3 scripts/check_plugin.py
+
+  cli:
+    name: CLI tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+
+      - name: Vet
+        working-directory: go
+        run: go vet ./...
+
+      - name: Test
+        working-directory: go
+        run: go test ./...
+
+      # The binaries are committed, so check that the launcher finds and runs
+      # the Linux one.
+      - name: Run the bundled binary
+        run: plugin/cli/vaadin-agent-tools check-theme-mixing test/fixtures/clean --json

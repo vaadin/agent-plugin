@@ -1,0 +1,31 @@
+{
+  "name": "vaadin",
+  "displayName": "Vaadin",
+  "version": "0.1.0",
+  "description": "Build Vaadin applications with current Vaadin documentation and Java API lookups, Vaadin Directory add-on search, and skills for project setup, Aura theming, visual design, form layouts, browserless UI tests, and reviewing code for workarounds where Vaadin already has an API. Checks theme usage automatically after styling edits.",
+  "author": {
+    "name": "Vaadin",
+    "url": "https://vaadin.com"
+  },
+  "homepage": "https://vaadin.com/docs/latest/building-apps/agentic-development",
+  "repository": "https://github.com/vaadin/agent-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "vaadin",
+    "java",
+    "flow",
+    "hilla",
+    "spring-boot",
+    "web",
+    "ui",
+    "testing",
+    "mcp",
+    "theme",
+    "aura"
+  ],
+  "icon": "./assets/vaadin-icon.svg",
+  "documentationUrl": "https://vaadin.com/docs/latest/building-apps/agentic-development",
+  "supportUrl": "https://github.com/vaadin/agent-plugin/issues",
+  "privacyPolicyUrl": "https://vaadin.com/privacy-policy",
+  "termsOfServiceUrl": "https://vaadin.com/terms-of-service"
+}
