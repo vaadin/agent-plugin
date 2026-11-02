@@ -1,7 +1,7 @@
 {
   "name": "vaadin",
   "version": "0.1.0",
-  "description": "Build Vaadin applications with current Vaadin documentation and Java API lookups, Vaadin Directory add-on search, and skills for project setup, Aura theming, visual design, and form layouts. Checks theme usage automatically after styling edits.",
+  "description": "Build Vaadin applications with current Vaadin documentation and Java API lookups, Vaadin Directory add-on search, and skills for project setup, Aura theming, visual design, form layouts, browserless UI tests, and reviewing code for workarounds where Vaadin already has an API. Checks theme usage automatically after styling edits.",
   "author": {
     "name": "Vaadin",
     "url": "https://vaadin.com"
@@ -17,6 +17,7 @@
     "spring-boot",
     "web",
     "ui",
+    "testing",
     "mcp",
     "theme",
     "aura"
@@ -26,7 +27,7 @@
   "interface": {
     "displayName": "Vaadin",
     "shortDescription": "Build Vaadin web apps",
-    "longDescription": "The Vaadin plugin helps Codex build Vaadin applications in Java. It connects two hosted Vaadin MCP servers: the documentation server, for current Vaadin documentation, component APIs, Java symbols, and the APIs added in each release, and the Vaadin Directory server, for finding and evaluating third-party add-ons. Skills cover bootstrapping a new project from start.vaadin.com, Aura theming, visual design, form and entity-editor layouts, and choosing and installing add-ons. A bundled native tool checks a project for Aura and Lumo theme mixing and for Aura custom properties the browser would silently ignore, and runs automatically after edits that touch styling.",
+    "longDescription": "The Vaadin plugin helps Codex build Vaadin applications in Java. It connects two hosted Vaadin MCP servers: the documentation server, for current Vaadin documentation, component APIs, Java symbols, and the APIs added in each release, and the Vaadin Directory server, for finding and evaluating third-party add-ons. Skills cover bootstrapping a new project from start.vaadin.com, Aura theming, visual design, form and entity-editor layouts, browserless tests that read as use cases, reviewing code for workarounds where Vaadin already has an API or component, and choosing and installing add-ons. A bundled native tool checks a project for Aura and Lumo theme mixing and for Aura custom properties the browser would silently ignore, and runs automatically after edits that touch styling.",
     "developerName": "Vaadin",
     "category": "Developer Tools",
     "capabilities": [

@@ -2,7 +2,7 @@
   "name": "vaadin",
   "displayName": "Vaadin",
   "version": "0.1.0",
-  "description": "Build Vaadin applications with current Vaadin documentation and Java API lookups, Vaadin Directory add-on search, and skills for project setup, Aura theming, visual design, and form layouts. Checks theme usage automatically after styling edits.",
+  "description": "Build Vaadin applications with current Vaadin documentation and Java API lookups, Vaadin Directory add-on search, and skills for project setup, Aura theming, visual design, form layouts, browserless UI tests, and reviewing code for workarounds where Vaadin already has an API. Checks theme usage automatically after styling edits.",
   "author": {
     "name": "Vaadin",
     "url": "https://vaadin.com"
@@ -18,6 +18,7 @@
     "spring-boot",
     "web",
     "ui",
+    "testing",
     "mcp",
     "theme",
     "aura"

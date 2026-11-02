@@ -3,8 +3,9 @@
 Build [Vaadin](https://vaadin.com) applications with Claude Code or Codex. The
 plugin gives your coding agent current Vaadin documentation and Java API
 lookups, search across the add-ons in Vaadin Directory, skills for setting up
-projects, theming, visual design, and form layouts, and automatic checks that
-catch theme mistakes the browser would silently ignore.
+projects, theming, visual design, form layouts, browserless UI tests, and code
+review, and automatic checks that catch theme mistakes the browser would
+silently ignore.
 
 Vaadin adds API faster than models are retrained. With this plugin the agent
 looks things up in the documentation for your Vaadin version instead of
@@ -31,6 +32,8 @@ The agent picks up a skill when your request matches it. You can also name one.
 | `vaadin-form-layout` | Build a form or entity editor with `FormLayout` from a Figma link, screenshot, or description. |
 | `aura-theme` | Create or adjust an Aura theme: colors, typography, density, surfaces, dark mode. |
 | `vaadin-frontend-design` | Make a view look polished and distinctive, beyond the default theme. |
+| `vaadin-browserless-testing` | Write browserless tests that verify use cases inside the JVM and read as the use case itself. |
+| `vaadin-usage-review` | Review Vaadin code for workarounds where Vaadin already has an API or component. Reports only; never edits. |
 | `vaadin-add-ons` | Find, compare, and install add-ons from Vaadin Directory. |
 | `vaadin-check-theme-mixing` | Check whether a project mixes the Aura and Lumo themes. |
 | `vaadin-check-aura-usage` | Check a project's CSS and Java inline styles for Aura custom properties that do nothing. |
@@ -84,6 +87,8 @@ In Codex, use `codex plugin remove` with the same names.
 - "Build an editor for the `Customer` entity with sections for contact details and address."
 - "Give this app a dark Aura theme with emerald accents and a compact layout."
 - "Check the current Vaadin docs and add lazy loading to this Grid."
+- "Write browserless tests for the booking use cases of this view."
+- "Review the code you just wrote for Vaadin workarounds."
 - "Is there a Vaadin add-on for a date range picker that works with our Vaadin version?"
 - "My `--aura-background-color` change broke dark mode. What's wrong?"
 

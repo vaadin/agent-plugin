@@ -3,8 +3,8 @@
 ## 0.1.0 (unreleased)
 
 First version of the combined Vaadin plugin. It replaces `vaadin-skills`
-0.2.1 ([`vaadin/agent-skills`](https://github.com/vaadin/agent-skills) at
-`21caf0a`) and `vaadin-agent-tools` 0.3.2
+0.3.0 ([`vaadin/agent-skills`](https://github.com/vaadin/agent-skills) at
+`6e74fcd`) and `vaadin-agent-tools` 0.3.2
 ([`vaadin/agent-tools`](https://github.com/vaadin/agent-tools) at `322ce3c`).
 
 ### Added
@@ -14,6 +14,8 @@ First version of the combined Vaadin plugin. It replaces `vaadin-skills`
   ([agent-skills#13](https://github.com/vaadin/agent-skills/issues/13)).
 - `vaadin-add-ons` skill for finding, evaluating, and installing Vaadin
   Directory add-ons.
+- `vaadin-usage-review` now also runs the styling checkers when the review
+  covers CSS or Java that sets styles.
 - Manifest metadata for the Claude and OpenAI plugin directories, and a
   square icon.
 
@@ -25,10 +27,6 @@ First version of the combined Vaadin plugin. It replaces `vaadin-skills`
 - The CLI no longer has a version of its own, so a release that changes no Go
   code doesn't need new binaries
   ([agent-tools#2](https://github.com/vaadin/agent-tools/issues/2)).
-- `vaadin-frontend-design` pointed to a theming skill that doesn't exist. It now
-  points to `aura-theme` and to the docs MCP's `get_theme_css_properties` and
-  `get_component_styling`
-  ([agent-skills#18](https://github.com/vaadin/agent-skills/issues/18)).
 - Skills name MCP tools by their real names instead of `mcp_vaadin_…`.
 
 ### Fixed

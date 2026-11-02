@@ -12,7 +12,8 @@ way to install it.
 The plugin replaces two earlier plugins, whose sources were merged here:
 
 - [`vaadin/agent-skills`](https://github.com/vaadin/agent-skills)
-  (`vaadin-skills`): the docs MCP server and the theming, design, and form skills
+  (`vaadin-skills`): the docs MCP server and the theming, design, form, testing,
+  and review skills
 - [`vaadin/agent-tools`](https://github.com/vaadin/agent-tools)
   (`vaadin-agent-tools`): the native CLI, its skills, and the styling hook
 
