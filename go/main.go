@@ -1,7 +1,6 @@
 // Command vaadin-agent-tools is a self-contained native CLI of Vaadin tools for
-// AI agents (and humans). It is a Go port of the JavaScript implementation in
-// ../src; the CLI surface (tool names, args, --json shape, exit codes) is the
-// stable contract and is identical across both implementations.
+// AI agents (and humans). The CLI surface (tool names, args, --json shape, exit
+// codes) is the contract the plugin's skills and hook rely on.
 package main
 
 import (

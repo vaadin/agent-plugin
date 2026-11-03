@@ -14,14 +14,10 @@ BIN=""
 
 case "$os" in
   Darwin)
-    if [ -x "$P/vaadin-agent-tools-darwin" ]; then
-      BIN="$P/vaadin-agent-tools-darwin" # universal (arm64 + amd64)
-    else
-      case "$arch" in
-        arm64)        BIN="$P/vaadin-agent-tools-darwin-arm64" ;;
-        x86_64|amd64) BIN="$P/vaadin-agent-tools-darwin-amd64" ;;
-      esac
-    fi
+    case "$arch" in
+      arm64)        BIN="$P/vaadin-agent-tools-darwin-arm64" ;;
+      x86_64|amd64) BIN="$P/vaadin-agent-tools-darwin-amd64" ;;
+    esac
     ;;
   Linux)
     case "$arch" in

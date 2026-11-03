@@ -2,47 +2,44 @@ package tools
 
 import (
 	"archive/zip"
-	"bytes"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
-	"time"
 
 	"github.com/vaadin/agent-plugin/internal/tool"
 )
 
-// CreateProject bootstraps a new Vaadin project by downloading a skeleton from
-// start.vaadin.com and extracting it. It mirrors the core of create-vaadin
-// (`npm init vaadin`): GET https://start.vaadin.com/skeleton?<params> and unzip
-// with the top-level directory stripped. The interactive prompts and IDE launch
-// of create-vaadin are deliberately omitted — an agent passes flags instead.
+// CreateProject extracts a Vaadin project skeleton from start.vaadin.com into a
+// directory. It mirrors the unpacking half of create-vaadin (`npm init vaadin`):
+// unzip with the top-level directory stripped. The download itself is left to
+// the caller (the vaadin-create-project skill runs curl), so the CLI never
+// touches the network.
 var CreateProject = tool.Descriptor{
 	Name:    "create-project",
-	Summary: "Bootstrap a new Vaadin project from start.vaadin.com.",
-	Usage: `vaadin-agent-tools create-project <targetDir> [flags]
+	Summary: "Extract a Vaadin project skeleton from start.vaadin.com.",
+	Usage: `vaadin-agent-tools create-project <targetDir> --skeleton=<file.zip> [flags]
 
-Downloads a fresh Vaadin project skeleton from https://start.vaadin.com and
-extracts it into <targetDir>. Mirrors ` + "`npm init vaadin`" + ` (create-vaadin).
+Extracts a Vaadin project skeleton, downloaded beforehand from
+https://start.vaadin.com/skeleton, into <targetDir>, without the archive's
+top-level directory. Mirrors ` + "`npm init vaadin`" + ` (create-vaadin). This tool
+doesn't access the network; download the skeleton first, for example:
+
+  curl -fsSL -o skeleton.zip "https://start.vaadin.com/skeleton?artifactId=my-app&frameworks=flow&ref=agent-plugin"
 
 Arguments:
-  targetDir      Directory to create the project in.
+  targetDir          Directory to create the project in.
 
 Flags:
-  --name=<id>    Maven artifactId (default: sanitized targetDir basename)
-  --example=<v>  Example view to include: "flow" (Task List) or "none"
-                 (default: flow)
-  --pre          Use the pre-release Vaadin platform version
-  --overwrite    If targetDir exists and is non-empty, replace its contents
+  --skeleton=<file>  The downloaded skeleton ZIP (required)
+  --overwrite        If targetDir exists and is non-empty, replace its contents
 
 Exit codes:
   0  project created
-  1  download or extraction failed
-  2  usage error (missing targetDir, or it exists without --overwrite)`,
+  1  the skeleton could not be read or extracted
+  2  usage error (missing targetDir or --skeleton, or targetDir exists
+     without --overwrite)`,
 	Run: runCreateProject,
 }
 
@@ -52,13 +49,10 @@ type createReport struct {
 	OK         bool   `json:"-"`
 	UsageError string `json:"-"`
 
-	Project     string `json:"project"`
-	Directory   string `json:"directory"`
-	Example     string `json:"example"`
-	PreRelease  bool   `json:"preRelease"`
-	Files       int    `json:"files"`
-	SkeletonURL string `json:"skeletonUrl"`
-	Error       string `json:"error,omitempty"`
+	Directory string `json:"directory"`
+	Skeleton  string `json:"skeleton"`
+	Files     int    `json:"files"`
+	Error     string `json:"error,omitempty"`
 }
 
 func runCreateProject(args tool.Args) tool.Result {
@@ -72,64 +66,56 @@ func runCreateProject(args tool.Args) tool.Result {
 func createProject(args tool.Args) createReport {
 	positionals, flags := splitFlags(args.Positionals)
 	if len(positionals) == 0 {
-		return createReport{UsageError: "Missing target directory. Usage: create-project <targetDir> [flags]"}
+		return createReport{UsageError: "Missing target directory. Usage: create-project <targetDir> --skeleton=<file.zip>"}
+	}
+	skeleton := flags["skeleton"]
+	if skeleton == "" || skeleton == "true" {
+		return createReport{UsageError: "Missing --skeleton=<file.zip>. Download it from https://start.vaadin.com/skeleton first."}
 	}
 
 	target := positionals[0]
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(args.Cwd, target)
 	}
-
-	name := flags["name"]
-	if name == "" {
-		name = filepath.Base(target)
+	if !filepath.IsAbs(skeleton) {
+		skeleton = filepath.Join(args.Cwd, skeleton)
 	}
-	name = sanitizeName(name)
-	if name == "" {
-		return createReport{UsageError: "Could not derive a valid project name; pass --name=<id>."}
-	}
-
-	example := flags["example"]
-	if example == "" {
-		example = "flow"
-	}
-	if example != "flow" && example != "none" {
-		return createReport{UsageError: `--example must be "flow" or "none"`}
-	}
-	pre := isSet(flags, "pre")
 	overwrite := isSet(flags, "overwrite")
 
 	// Target directory precondition (mirrors create-vaadin's overwrite handling).
+	var existing []os.DirEntry
 	if info, err := os.Stat(target); err == nil {
 		if !info.IsDir() {
 			return createReport{UsageError: "Target exists and is not a directory: " + target}
 		}
-		entries, _ := os.ReadDir(target)
-		if len(entries) > 0 {
-			if !overwrite {
-				return createReport{UsageError: "Target directory already exists and is not empty: " + target + " (pass --overwrite to replace its contents)"}
-			}
-			for _, e := range entries {
-				if err := os.RemoveAll(filepath.Join(target, e.Name())); err != nil {
-					return createReport{UsageError: "Could not clear target directory: " + err.Error()}
-				}
-			}
+		existing, _ = os.ReadDir(target)
+		if len(existing) > 0 && !overwrite {
+			return createReport{UsageError: "Target directory already exists and is not empty: " + target + " (pass --overwrite to replace its contents)"}
 		}
 	}
 
-	skeletonURL := buildSkeletonURL(name, example, pre)
-	base := createReport{Project: name, Directory: target, Example: example, PreRelease: pre, SkeletonURL: skeletonURL}
+	base := createReport{Directory: target, Skeleton: skeleton}
 
-	zipBytes, err := download(skeletonURL)
+	// Open the archive before clearing anything, so a failed download (an
+	// HTML error page, an empty file) leaves an existing target untouched.
+	zr, err := zip.OpenReader(skeleton)
 	if err != nil {
-		base.Error = err.Error()
+		base.Error = "could not read the skeleton (check that the download succeeded): " + err.Error()
 		return base
+	}
+	defer zr.Close()
+
+	for _, e := range existing {
+		if err := os.RemoveAll(filepath.Join(target, e.Name())); err != nil {
+			base.Error = "could not clear target directory: " + err.Error()
+			return base
+		}
 	}
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		base.Error = "could not create target directory: " + err.Error()
 		return base
 	}
-	count, err := extractZip(zipBytes, target)
+	count, err := extractZip(&zr.Reader, target)
 	if err != nil {
 		base.Error = "extraction failed: " + err.Error()
 		return base
@@ -141,55 +127,6 @@ func createProject(args tool.Args) createReport {
 }
 
 // --- helpers ----------------------------------------------------------------
-
-var nonNameChars = regexp.MustCompile(`[^a-zA-Z0-9-_]`)
-
-// sanitizeName strips everything but [A-Za-z0-9-_], mirroring create-vaadin's
-// sanitizePath.
-func sanitizeName(s string) string {
-	return nonNameChars.ReplaceAllString(strings.TrimSpace(s), "")
-}
-
-// buildSkeletonURL assembles the start.vaadin.com/skeleton URL. Query parameters
-// mirror create-vaadin: artifactId, ref=agent-tools, optional frameworks=flow, optional
-// platformVersion=pre.
-func buildSkeletonURL(artifactID, example string, pre bool) string {
-	q := url.Values{}
-	q.Set("artifactId", artifactID)
-	q.Set("ref", "agent-tools")
-	if example == "flow" {
-		q.Set("frameworks", "flow")
-	}
-	if pre {
-		q.Set("platformVersion", "pre")
-	}
-	return "https://start.vaadin.com/skeleton?" + q.Encode()
-}
-
-func download(u string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Vaadin CLI")
-	// Let net/http negotiate and transparently decompress transfer encoding.
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return io.ReadAll(resp.Body)
-	case http.StatusNotFound:
-		return nil, fmt.Errorf("preset not found (HTTP 404) for %s", u)
-	default:
-		return nil, fmt.Errorf("unable to download project: HTTP %d", resp.StatusCode)
-	}
-}
 
 // stripFirst removes the leading path component (the archive's top-level
 // directory), matching create-vaadin's decompress `strip: 1`. Returns "" when
@@ -207,11 +144,7 @@ func stripFirst(name string) string {
 // stripped, and returns the number of files written. It rejects entries that
 // would escape target (zip-slip) and preserves file modes (so mvnw stays
 // executable) and empty files (so an empty theme styles.css survives).
-func extractZip(data []byte, target string) (int, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return 0, err
-	}
+func extractZip(zr *zip.Reader, target string) (int, error) {
 	absTarget, err := filepath.Abs(target)
 	if err != nil {
 		return 0, err
@@ -298,15 +231,11 @@ func isSet(flags map[string]string, key string) bool {
 func renderCreateHuman(r createReport) string {
 	if r.Error != "" {
 		return "# create-project\n\n✗ Failed to create project: " + r.Error +
-			"\n  Skeleton URL: " + r.SkeletonURL
+			"\n  Skeleton: " + r.Skeleton
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# create-project\n\n")
-	fmt.Fprintf(&b, "✓ Project '%s' created in %s\n", r.Project, r.Directory)
-	fmt.Fprintf(&b, "  example view: %s\n", r.Example)
-	if r.PreRelease {
-		fmt.Fprintf(&b, "  pre-release:  yes\n")
-	}
+	fmt.Fprintf(&b, "✓ Project created in %s\n", r.Directory)
 	fmt.Fprintf(&b, "  files written: %d\n\n", r.Files)
 	fmt.Fprintf(&b, "Next: cd %s && mvn", r.Directory)
 	return b.String()

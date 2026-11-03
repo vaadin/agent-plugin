@@ -38,3 +38,27 @@ jobs:
       # the Linux one.
       - name: Run the bundled binary
         run: plugin/cli/vaadin-agent-tools check-theme-mixing test/fixtures/clean --json
+
+  binaries:
+    name: Binaries match the source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+
+      # go/build.sh is reproducible (pinned toolchain, -trimpath,
+      # -buildvcs=false), so rebuilding this commit must give the committed
+      # binaries byte for byte.
+      - name: Rebuild
+        run: sh go/build.sh "$RUNNER_TEMP/platform"
+
+      - name: Compare with plugin/cli/platform
+        run: |
+          (cd "$RUNNER_TEMP/platform" && sha256sum *)
+          diff -r plugin/cli/platform "$RUNNER_TEMP/platform" || {
+            echo "::error::plugin/cli/platform doesn't match go/. Run sh go/build.sh and commit the result."
+            exit 1
+          }

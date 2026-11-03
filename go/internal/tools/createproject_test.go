@@ -10,39 +10,6 @@ import (
 	"github.com/vaadin/agent-plugin/internal/tool"
 )
 
-func TestSanitizeName(t *testing.T) {
-	cases := map[string]string{
-		"my-vaadin-app": "my-vaadin-app",
-		"  My App!  ":   "MyApp",
-		"foo/bar.baz":   "foobarbaz",
-		"a_b-c":         "a_b-c",
-		"!!!":           "",
-	}
-	for in, want := range cases {
-		if got := sanitizeName(in); got != want {
-			t.Errorf("sanitizeName(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-func TestBuildSkeletonURL(t *testing.T) {
-	cases := []struct {
-		name    string
-		example string
-		pre     bool
-		want    string
-	}{
-		{"my-app", "flow", false, "https://start.vaadin.com/skeleton?artifactId=my-app&frameworks=flow&ref=agent-tools"},
-		{"my-app", "none", false, "https://start.vaadin.com/skeleton?artifactId=my-app&ref=agent-tools"},
-		{"my-app", "flow", true, "https://start.vaadin.com/skeleton?artifactId=my-app&frameworks=flow&platformVersion=pre&ref=agent-tools"},
-	}
-	for _, c := range cases {
-		if got := buildSkeletonURL(c.name, c.example, c.pre); got != c.want {
-			t.Errorf("buildSkeletonURL(%q, %q, %v) = %q, want %q", c.name, c.example, c.pre, got, c.want)
-		}
-	}
-}
-
 func TestStripFirst(t *testing.T) {
 	cases := map[string]string{
 		"proj/pom.xml":           "pom.xml",
@@ -85,6 +52,25 @@ func makeZip(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
+func openZip(t *testing.T, data []byte) *zip.Reader {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return zr
+}
+
+// writeFile writes data to name in a fresh temp directory and returns its path.
+func writeFile(t *testing.T, name string, data []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestExtractZipStripsTopDirAndKeepsEmptyFiles(t *testing.T) {
 	data := makeZip(t, map[string]string{
 		"my-project/":                             "",
@@ -94,7 +80,7 @@ func TestExtractZipStripsTopDirAndKeepsEmptyFiles(t *testing.T) {
 	})
 
 	dir := t.TempDir()
-	count, err := extractZip(data, dir)
+	count, err := extractZip(openZip(t, data), dir)
 	if err != nil {
 		t.Fatalf("extractZip: %v", err)
 	}
@@ -126,18 +112,25 @@ func TestExtractZipRejectsZipSlip(t *testing.T) {
 		"proj/../../escape.txt": "pwned",
 	})
 	dir := t.TempDir()
-	if _, err := extractZip(data, dir); err == nil {
+	if _, err := extractZip(openZip(t, data), dir); err == nil {
 		t.Fatal("expected zip-slip path to be rejected")
 	}
 }
 
 func TestCreateProjectUsageErrors(t *testing.T) {
+	skeleton := writeFile(t, "skeleton.zip", makeZip(t, map[string]string{"p/pom.xml": "<project/>"}))
+
 	// No target directory.
-	if r := createProject(tool.Args{Cwd: t.TempDir()}); r.UsageError == "" {
+	if r := createProject(tool.Args{Positionals: []string{"--skeleton=" + skeleton}, Cwd: t.TempDir()}); r.UsageError == "" {
 		t.Error("expected usage error when target directory is missing")
 	}
 
-	// Existing, non-empty target without --overwrite (checked before any network).
+	// No --skeleton.
+	if r := createProject(tool.Args{Positionals: []string{"newproj"}, Cwd: t.TempDir()}); r.UsageError == "" {
+		t.Error("expected usage error when --skeleton is missing")
+	}
+
+	// Existing, non-empty target without --overwrite.
 	dir := t.TempDir()
 	existing := filepath.Join(dir, "proj")
 	if err := os.MkdirAll(existing, 0o755); err != nil {
@@ -146,12 +139,46 @@ func TestCreateProjectUsageErrors(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(existing, "keep.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r := createProject(tool.Args{Positionals: []string{"proj"}, Cwd: dir}); r.UsageError == "" {
+	if r := createProject(tool.Args{Positionals: []string{"proj", "--skeleton=" + skeleton}, Cwd: dir}); r.UsageError == "" {
 		t.Error("expected usage error for a non-empty target without --overwrite")
 	}
+}
 
-	// Invalid --example.
-	if r := createProject(tool.Args{Positionals: []string{"newproj", "--example=react"}, Cwd: t.TempDir()}); r.UsageError == "" {
-		t.Error("expected usage error for an invalid --example value")
+func TestCreateProjectExtractsSkeleton(t *testing.T) {
+	skeleton := writeFile(t, "skeleton.zip", makeZip(t, map[string]string{
+		"my-app/pom.xml":                "<project/>",
+		"my-app/src/main/java/App.java": "class App {}",
+	}))
+	dir := t.TempDir()
+	r := createProject(tool.Args{Positionals: []string{"my-app", "--skeleton=" + skeleton}, Cwd: dir})
+	if !r.OK || r.UsageError != "" {
+		t.Fatalf("createProject failed: %+v", r)
+	}
+	if r.Files != 2 {
+		t.Errorf("files written = %d, want 2", r.Files)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "my-app", "pom.xml")); err != nil {
+		t.Errorf("expected my-app/pom.xml: %v", err)
+	}
+}
+
+func TestCreateProjectKeepsTargetWhenSkeletonIsInvalid(t *testing.T) {
+	// What curl saves when the server answers with an error page.
+	skeleton := writeFile(t, "skeleton.zip", []byte("<html>Service unavailable</html>"))
+	dir := t.TempDir()
+	keep := filepath.Join(dir, "proj", "keep.txt")
+	if err := os.MkdirAll(filepath.Dir(keep), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keep, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := createProject(tool.Args{Positionals: []string{"proj", "--skeleton=" + skeleton, "--overwrite"}, Cwd: dir})
+	if r.OK || r.Error == "" {
+		t.Fatalf("expected an error for an invalid skeleton, got %+v", r)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("an invalid skeleton must not clear the target: %v", err)
 	}
 }

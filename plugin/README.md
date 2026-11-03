@@ -79,6 +79,10 @@ load twice:
 /plugin uninstall vaadin-agent-tools@vaadin-marketplace
 ```
 
+If you installed them from the Claude plugin directory instead, remove them on
+claude.ai under **Customize > Plugins**, or in Claude Code from `/plugin` >
+**Installed**.
+
 In Codex, use `codex plugin remove` with the same names.
 
 ## Try it
@@ -100,6 +104,8 @@ In Codex, use `codex plugin remove` with the same names.
 - For the checks and `vaadin-create-project`: macOS (Apple silicon or Intel),
   Linux (x64 or arm64), or Windows (x64). They use a native tool bundled with the
   plugin.
+- For `vaadin-create-project`: `curl`, which comes with macOS, Windows 10 and
+  later, and most Linux distributions.
 
 ## Data and network use
 
@@ -108,12 +114,23 @@ In Codex, use `codex plugin remove` with the same names.
   They do not receive your source code unless the agent puts it in a query.
   Both are operated by Vaadin under the
   [Vaadin Privacy Policy](https://vaadin.com/privacy-policy).
-- **`vaadin-create-project`** downloads a project skeleton from
-  `https://start.vaadin.com` when you ask for a new project. The request carries
-  the project name, the options you chose, and a parameter that identifies the
-  plugin as the source.
+- **`vaadin-create-project`** has the agent download a project skeleton from
+  `https://start.vaadin.com` with `curl` when you ask for a new project. The
+  request carries the project name, the options you chose, and a parameter that
+  identifies the plugin as the source. The bundled tool then extracts it.
 - **The checks and the styling hook** run on your machine. They read the
   project's `.css` and `.java` files and send nothing anywhere.
+- **The bundled tool** (`cli/`) never accesses the network.
+
+## Source of the bundled tool
+
+The checks, the styling hook, and `vaadin-create-project` run
+`vaadin-agent-tools`, a native tool in `cli/platform/`. It's built from the Go
+source in [`go/`](https://github.com/vaadin/agent-plugin/tree/main/go) in the
+plugin's repository. The build is reproducible: rebuilding a commit with
+[`go/build.sh`](https://github.com/vaadin/agent-plugin/blob/main/go/build.sh)
+gives byte-identical binaries, and CI checks that the committed binaries match
+the source.
 - The plugin collects no telemetry of its own.
 
 ## Troubleshooting
