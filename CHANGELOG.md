@@ -28,6 +28,16 @@ First version of the combined Vaadin plugin. It replaces `vaadin-skills`
   code doesn't need new binaries
   ([agent-tools#2](https://github.com/vaadin/agent-tools/issues/2)).
 - Skills name MCP tools by their real names instead of `mcp_vaadin_…`.
+- `vaadin-create-project` downloads the skeleton with `curl`, and the CLI's
+  `create-project` only extracts it (`--skeleton=<file.zip>`; `--name`,
+  `--example`, and `--pre` became URL parameters in the skill). The CLI no
+  longer accesses the network, which halves the size of each binary.
+- Requests to start.vaadin.com identify the source as `ref=agent-plugin`
+  instead of `ref=agent-tools`.
+- macOS gets separate `arm64` and `amd64` binaries instead of a universal one,
+  to stay under the Claude plugin directory's 5 MiB limit per file.
+- The binaries are built reproducibly with Go 1.27.3, and CI checks that they
+  match the source.
 
 ### Fixed
 

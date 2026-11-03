@@ -54,7 +54,8 @@ node tools/aura-reference/generate.mjs --check    # generated tables are current
 claude plugin validate plugin                     # Claude Code's own validator
 ```
 
-CI runs all but the last.
+CI runs all but the last, and also rebuilds the binaries and fails if they
+differ from the committed ones.
 
 ## Skills
 
@@ -78,7 +79,10 @@ the agent loads only when the skill tells it to.
 
 The checks and the project bootstrapper are a small Go CLI compiled ahead of
 time for each platform, so the plugin needs no Node.js or JVM at runtime and
-never looks outside its own directory for something to execute.
+never looks outside its own directory for something to execute. The CLI doesn't
+access the network: `vaadin-create-project` downloads the skeleton with `curl`
+and hands the ZIP to `create-project`. Keep it that way; `net/http` and
+`crypto/tls` alone would push every binary over the size limit below.
 
 The command line is the contract: `vaadin-agent-tools <tool> [args] [--json]`,
 a `{ "tool", "ok", ... }` JSON envelope, and exit codes `0` (no error-level
@@ -88,15 +92,24 @@ of its own; it ships with, and is versioned as, the plugin.
 ### Rebuilding the binaries
 
 The binaries in `plugin/cli/platform/` are committed so that a git install
-works with no build step. When you change anything under `go/`, rebuild them on
-macOS (the universal macOS binary needs `lipo`) and commit them in the same
-change:
+works with no build step. When you change anything under `go/`, rebuild them
+(on any OS) and commit them in the same change:
 
 ```shell
 sh go/build.sh && git add plugin/cli/platform
 ```
 
-Don't rebuild for changes outside `go/`: every rebuild adds about 28 MB to the
+The build is reproducible. `go/build.sh` uses the Go version on the `toolchain`
+line of `go/go.mod` (downloading it if needed) and leaves the commit out of the
+binaries, so CI can rebuild them from the source and compare. To move to a newer
+Go, change that line and rebuild.
+
+The Claude plugin directory rejects any file over 5 MiB, and
+`claude plugin validate` doesn't check this (`check_plugin.py` does). The
+binaries are about 3.5 MB each. Don't compress them with UPX: packed executables
+get flagged by the directory's scanner.
+
+Don't rebuild for changes outside `go/`: every rebuild adds about 17 MB to the
 repository history.
 
 ### Adding a tool
@@ -176,7 +189,8 @@ Submit at [claude.ai/directory/manage](https://claude.ai/directory/manage)
 (**Submit new**, then **Plugin bundle**), with this repository as the source,
 `plugin` as the plugin path, and the branch or tag the listing should track.
 Every new version is validated and security-scanned. The bundled binaries are
-compiled executables, so expect a reviewer to look at them.
+compiled executables, so expect a release that changes them to be held for
+human review.
 
 ### OpenAI plugin directory
 

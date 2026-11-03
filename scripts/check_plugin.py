@@ -94,6 +94,11 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
             fail(f"symlinks are not allowed: {rel}")
         if entry == ".DS_Store":
             fail(f"remove {rel}")
+    # The Claude directory rejects the plugin; `claude plugin validate` doesn't check this.
+    for entry in filenames:
+        path = os.path.join(dirpath, entry)
+        if os.path.getsize(path) > 5 * 1024 * 1024:
+            fail(f"{os.path.relpath(path, ROOT)} is over the Claude directory's 5 MiB limit per file")
 if os.path.isdir(os.path.join(ROOT, "bin")):
     fail("a top-level bin/ directory stops claude.ai and Cowork from installing the plugin")
 
