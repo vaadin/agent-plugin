@@ -122,6 +122,68 @@ In Codex, use `codex plugin remove` with the same names.
   project's `.css` and `.java` files and send nothing anywhere.
 - **The bundled tool** (`cli/`) never accesses the network.
 
+## Using your own documentation server
+
+On a network that can't reach `vaadin.com`, such as an air-gapped one, you can
+run your own Vaadin documentation MCP server and point the plugin at it. The
+skills call the MCP tools by name, so they work with any server that has the
+same tools, such as `search_vaadin_docs`, `get_java_symbol`, and
+`get_new_apis`.
+
+### Claude Code
+
+Block the hosted servers in your settings (`~/.claude/settings.json`), or in
+managed settings for a whole organization:
+
+```json
+{
+  "deniedMcpServers": [
+    { "serverUrl": "https://mcp.vaadin.com/*" },
+    { "serverUrl": "https://vaadin.com/directory/*" }
+  ]
+}
+```
+
+Then add your own server:
+
+```shell
+claude mcp add --transport http --scope user vaadin https://docs-mcp.example.internal/docs
+```
+
+`claude mcp list` should show your `vaadin` server, and no longer show
+`plugin:vaadin:vaadin` or `plugin:vaadin:vaadin-directory`.
+
+### Codex
+
+In `~/.codex/config.toml`, add your server under the name `vaadin`, which
+replaces the plugin's server of the same name, and turn off the Directory
+server:
+
+```toml
+[mcp_servers.vaadin]
+url = "https://docs-mcp.example.internal/docs"
+
+[plugins."vaadin@<marketplace>".mcp_servers.vaadin-directory]
+enabled = false
+```
+
+Replace `<marketplace>` with the marketplace you installed the plugin from, as
+`codex plugin list` shows it, and run `codex mcp list` to check. Codex doesn't
+document that a server in `config.toml` replaces a plugin's server of the same
+name; this was checked with Codex 0.163.
+
+### What still needs `vaadin.com`
+
+- **`vaadin-add-ons`** searches the hosted Vaadin Directory server.
+- **`vaadin-create-project`** downloads the project skeleton from
+  `https://start.vaadin.com`.
+- **Installing** from the Claude and OpenAI plugin directories or from GitHub.
+  Instead, mirror [vaadin/agent-plugin](https://github.com/vaadin/agent-plugin)
+  on a Git host or shared folder on your network and list its `plugin/` folder
+  in a marketplace of your own. For Claude Code, see
+  [Plugins for organizations](https://code.claude.com/docs/en/plugins/org); for
+  Codex, add the marketplace with `codex plugin marketplace add <path or Git URL>`.
+
 ## Source of the bundled tool
 
 The checks, the styling hook, and `vaadin-create-project` run
@@ -138,6 +200,8 @@ the source.
 **The agent doesn't use the Vaadin documentation.** Run `/mcp` and check that
 `vaadin` and `vaadin-directory` are connected. Both need outbound HTTPS access to
 `vaadin.com`. Behind a proxy, make sure your agent's MCP client can reach them.
+Without access to `vaadin.com`, see
+[Using your own documentation server](#using-your-own-documentation-server).
 
 **The skills or MCP server show up twice.** Uninstall `vaadin-skills` and
 `vaadin-agent-tools` (see above), or remove an MCP server named `vaadin` that you
