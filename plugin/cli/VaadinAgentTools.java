@@ -34,6 +34,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.DirectoryIteratorException;
@@ -43,11 +44,14 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -66,6 +70,8 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.CRC32;
+import java.util.zip.CheckedInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
@@ -2171,7 +2177,7 @@ public final class VaadinAgentTools {
                     }
                 }
                 try {
-                    Files.createDirectories(target);
+                    createDirectories(target);
                 } catch (IOException x) {
                     return failed(directory, skeletonName, "could not create target directory: " + describe(x));
                 }
@@ -2195,11 +2201,13 @@ public final class VaadinAgentTools {
         /**
          * Writes the archive into target with the top-level directory stripped, and
          * returns the number of files written. It rejects entries that would escape
-         * target (zip slip), and keeps empty files (so an empty theme styles.css
-         * survives) and permissions (so mvnw stays executable).
+         * target (zip slip) and entries whose contents don't match their checksum,
+         * and keeps empty files (so an empty theme styles.css survives) and
+         * permissions (so mvnw stays executable).
          */
         static int extract(ZipFile zip, Map<String, Integer> modes, Path target) throws IOException {
             Path root = target.toAbsolutePath().normalize();
+            boolean posix = isPosix(root);
             int count = 0;
             for (Enumeration<? extends ZipEntry> en = zip.entries(); en.hasMoreElements();) {
                 ZipEntry entry = en.nextElement();
@@ -2217,17 +2225,50 @@ public final class VaadinAgentTools {
                     throw new IOException("unsafe path in archive: " + entry.getName());
                 }
                 if (entry.isDirectory()) {
-                    Files.createDirectories(dest);
+                    createDirectories(dest);
                     continue;
                 }
-                Files.createDirectories(dest.getParent());
-                try (InputStream in = zip.getInputStream(entry); OutputStream out = Files.newOutputStream(dest)) {
-                    in.transferTo(out);
+                createDirectories(dest.getParent());
+                // Create the file with the archive's permissions, so the umask applies
+                // to them as it would to any new file, and a private file is never
+                // readable to others, not even while it is being written.
+                FileAttribute<?>[] attrs = posix
+                        ? new FileAttribute<?>[] {PosixFilePermissions.asFileAttribute(
+                                permissionSet(modes.getOrDefault(entry.getName(), 0644)))}
+                        : new FileAttribute<?>[0];
+                CRC32 crc = new CRC32();
+                long written;
+                try (InputStream in = new CheckedInputStream(zip.getInputStream(entry), crc);
+                        OutputStream out = Channels.newOutputStream(Files.newByteChannel(dest, WRITE_OPTIONS, attrs))) {
+                    written = in.transferTo(out);
                 }
-                applyMode(dest, modes.getOrDefault(entry.getName(), 0644));
+                // ZipFile checks neither, so a damaged download would otherwise
+                // extract without a word.
+                if ((entry.getSize() >= 0 && written != entry.getSize())
+                        || (entry.getCrc() >= 0 && crc.getValue() != entry.getCrc())) {
+                    Files.deleteIfExists(dest);
+                    throw new IOException(entry.getName() + " is damaged: its contents don't match its checksum. "
+                            + "Download the skeleton again.");
+                }
                 count++;
             }
             return count;
+        }
+
+        private static final Set<OpenOption> WRITE_OPTIONS =
+                Set.of(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+
+        private static boolean isPosix(Path path) {
+            return path.getFileSystem().supportedFileAttributeViews().contains("posix");
+        }
+
+        /** Creates dir and its missing parents with 0755, minus the umask, like `mkdir -p -m 755`. */
+        static void createDirectories(Path dir) throws IOException {
+            if (isPosix(dir)) {
+                Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(permissionSet(0755)));
+            } else {
+                Files.createDirectories(dir);
+            }
         }
 
         /**
@@ -2309,37 +2350,10 @@ public final class VaadinAgentTools {
             return (u16(b, i) | (long) u16(b, i + 2) << 16) & 0xFFFFFFFFL;
         }
 
-        /**
-         * Gives a newly written file the archive's permission bits, minus what the
-         * umask takes away, as creating it with those bits would have. Java creates
-         * files with 0666 minus the umask, which shows the umask's read and write
-         * bits; its execute bits are taken to follow its read bits, which holds for
-         * the usual 022, 027 and 077. A file system without POSIX permissions
-         * (Windows) keeps its defaults.
-         */
-        static void applyMode(Path file, int mode) throws IOException {
-            PosixFileAttributeView view = Files.getFileAttributeView(file, PosixFileAttributeView.class);
-            if (view == null) {
-                return;
-            }
-            int created = bits(view.readAttributes().permissions());
-            int allowed = created | (created & 0444) >> 2;
-            int wanted = mode & allowed;
-            if (wanted != created) {
-                view.setPermissions(permissionSet(wanted));
-            }
-        }
-
-        static int bits(Set<PosixFilePermission> permissions) {
-            int m = 0;
-            for (PosixFilePermission p : permissions) {
-                m |= 0400 >> p.ordinal(); // OWNER_READ, OWNER_WRITE, ..., OTHERS_EXECUTE
-            }
-            return m;
-        }
-
+        /** The permissions in the low nine bits of mode. */
         static Set<PosixFilePermission> permissionSet(int mode) {
             Set<PosixFilePermission> set = EnumSet.noneOf(PosixFilePermission.class);
+            // The constants run OWNER_READ, OWNER_WRITE, ..., OTHERS_EXECUTE.
             for (PosixFilePermission p : PosixFilePermission.values()) {
                 if ((mode & 0400 >> p.ordinal()) != 0) {
                     set.add(p);

@@ -825,6 +825,77 @@ public final class VaadinAgentToolsTest {
         });
     }
 
+    /** Each file gets the archive's mode, minus the umask: never more. */
+    static void testCreateProjectNeverWidensPermissions() throws Exception {
+        withTempDir(dir -> {
+            if (Files.getFileAttributeView(dir, java.nio.file.attribute.PosixFileAttributeView.class) == null) {
+                return; // no POSIX permissions here (Windows)
+            }
+            byte[] zip = makeZip(files("my-app/secret.txt", "s", "my-app/run.sh", "#!/bin/sh\n"));
+            Path skeleton = dir.resolve("skeleton.zip");
+            Files.write(skeleton, withUnixMode(withUnixMode(zip, "my-app/secret.txt", 0600), "my-app/run.sh", 0700));
+            check(create(dir, "my-app", "--skeleton=" + skeleton).ok(), "createProject failed");
+            for (String name : List.of("secret.txt", "run.sh")) {
+                for (PosixFilePermission p : Files.getPosixFilePermissions(dir.resolve("my-app").resolve(name))) {
+                    check(p.name().startsWith("OWNER_"), "%s got %s, which its archive mode doesn't have", name, p);
+                }
+            }
+        });
+    }
+
+    /** A ZIP of one entry stored uncompressed, so its contents can be damaged in place. */
+    static byte[] makeStoredZip(String name, String content) throws IOException {
+        byte[] data = content.getBytes(StandardCharsets.UTF_8);
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(data);
+        ZipEntry entry = new ZipEntry(name);
+        entry.setMethod(ZipEntry.STORED);
+        entry.setSize(data.length);
+        entry.setCompressedSize(data.length);
+        entry.setCrc(crc.getValue());
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(buf)) {
+            zip.putNextEntry(entry);
+            zip.write(data);
+            zip.closeEntry();
+        }
+        return buf.toByteArray();
+    }
+
+    static int indexOf(byte[] haystack, byte[] needle) {
+        outer:
+        for (int i = 0; i + needle.length <= haystack.length; i++) {
+            for (int k = 0; k < needle.length; k++) {
+                if (haystack[i + k] != needle[k]) {
+                    continue outer;
+                }
+            }
+            return i;
+        }
+        throw new AssertionError("not found");
+    }
+
+    /** ZipFile checks no checksums, so extraction must, or a damaged download passes as fine. */
+    static void testCreateProjectRejectsDamagedEntries() throws Exception {
+        // Damaged contents in a stored entry.
+        byte[] stored = makeStoredZip("my-app/pom.xml", "<project>stored</project>");
+        stored[indexOf(stored, "stored</".getBytes(StandardCharsets.UTF_8))] ^= 0x20;
+        // A deflated entry whose checksum, in the central directory, doesn't match.
+        byte[] deflated = makeZip(files("my-app/pom.xml", "<project>deflated</project>"));
+        deflated[indexOf(deflated, new byte[] {0x50, 0x4b, 0x01, 0x02}) + 16] ^= (byte) 0xFF;
+
+        for (byte[] zip : List.of(stored, deflated)) {
+            withTempDir(dir -> {
+                Path skeleton = dir.resolve("skeleton.zip");
+                Files.write(skeleton, zip);
+                var r = create(dir, "my-app", "--skeleton=" + skeleton);
+                check(!r.ok(), "a damaged entry was extracted as if it were fine: %s", r);
+                check(r.error().contains("my-app/pom.xml is damaged"), "unexpected error: %s", r.error());
+                check(!Files.exists(dir.resolve("my-app/pom.xml")), "the damaged file was left behind");
+            });
+        }
+    }
+
     static void testPermissionsFollowTheHostSystem() {
         checkEquals(0755, VaadinAgentTools.CreateProject.permissions(3, 0100755L << 16), "Unix 0755");
         checkEquals(0644, VaadinAgentTools.CreateProject.permissions(3, 0), "Unix without a mode");

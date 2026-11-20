@@ -24,9 +24,10 @@ First version of the combined Vaadin plugin. It replaces `vaadin-skills`
 - The bundled CLI is one Java source file, `cli/VaadinAgentTools.java`, that
   the JDK runs directly (`java VaadinAgentTools.java`), instead of a native
   binary for each platform. The plugin ships no compiled code, which the Claude
-  plugin directory's review holds back, and the tool runs anywhere with Java 17
-  or later: the JDK in `JAVA_HOME`, or else the `java` on the `PATH`. Without
-  one, the skills say what's missing and the styling hook does nothing.
+  plugin directory's review holds back, and the tool runs anywhere with a JDK
+  17 or later: the one in `JAVA_HOME`, or else the one the `java` on the `PATH`
+  belongs to. Without one, the skills say what's missing and the styling hook
+  does nothing.
 - The styling hook starts Java only for edits that could touch styling: `.css`
   files, and `.java` edits that mention a styling API.
 - The bundled CLI moved from `bin/` to `cli/`. claude.ai and Cowork refuse

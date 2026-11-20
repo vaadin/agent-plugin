@@ -49,13 +49,15 @@ Two layout rules come from the hosts:
 ```shell
 python3 scripts/check_plugin.py                   # manifests, skills, directory limits
 sh scripts/test-cli.sh                            # CLI (needs a JDK 17 or later)
+scripts\test-launcher.bat                         # the .bat launcher (Windows only)
 node --test 'tools/aura-reference/*.test.mjs'     # Aura reference generator
 node tools/aura-reference/generate.mjs --check    # generated tables are current
 claude plugin validate plugin                     # Claude Code's own validator
 ```
 
 CI runs all but the last. It runs the CLI tests with Java 17 on Linux, macOS,
-and Windows, and with Java 25 on Linux.
+and Windows, and with Java 25 on Linux, and checks that the launchers turn
+down Java 11.
 
 ## Skills
 
@@ -101,8 +103,12 @@ Rules that keep this working:
   `curl` and hands the ZIP to `create-project`.
 
 The launcher prefers the JDK in `JAVA_HOME`, like Maven and Gradle, then the
-`java` on the `PATH`. Without Java 17 or later, it explains on stderr and exits
-with `3`; the skills tell the agent to pass that on. Claude Code runs hooks and
+one the `java` on the `PATH` belongs to. It needs Java 17 or later with the
+compiler (the `jdk.compiler` module), which a JRE or a jlink-built runtime may
+lack. It reads both from the JDK's `release` file, so checking costs no extra
+start of Java, and asks `java` when there is no such file. Without one, it
+explains on stderr and exits with `3`, and the skills tell the agent to pass
+that on; the hook stays silent. Claude Code runs hooks and
 Bash commands through Git Bash on Windows, so the `sh` launcher covers Windows
 too; the `.bat` one is for cmd and PowerShell.
 
@@ -122,8 +128,10 @@ plugin/cli/vaadin-agent-tools check-aura-usage test/fixtures/aura-readonly
 `test/VaadinAgentToolsTest.java` is plain Java: every static `test*` method is
 a test, and they reach into the CLI's package-private classes, so the two files
 are compiled together. `sh scripts/test-cli.sh` compiles and runs them, then
-checks the launcher: exit codes, the missing-JDK message, and the hook's
-pre-filter. Pass part of a test name to run only the matching tests.
+checks the launcher: exit codes, what happens without a suitable JDK, and the
+hook's pre-filter. Pass part of a test name to run only the matching tests. Set
+`OLD_JDK` to a JDK older than 17 to check that it's turned down, too.
+`scripts\test-launcher.bat` checks the `.bat` launcher on Windows.
 
 ### Adding a tool
 

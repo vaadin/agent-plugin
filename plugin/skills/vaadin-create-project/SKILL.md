@@ -60,7 +60,7 @@ In Codex, build the path from this skill's own location instead:
 On Windows without a POSIX shell, run `cli\vaadin-agent-tools.bat` with the same
 arguments.
 
-If it exits with code `3`, there is no Java 17 or later to run it with: tell
+If it exits with code `3`, there is no JDK 17 or later to run it with: tell
 the user what it printed (install a JDK, or point `JAVA_HOME` at one).
 
 Flags:

@@ -3,15 +3,16 @@
 #
 # The CLI is one Java source file, VaadinAgentTools.java, next to this script.
 # Java runs it in source-file mode (JEP 330), compiling it in memory on every
-# run, so the plugin ships no compiled code. It needs Java 17 or later: the JDK
-# in JAVA_HOME if that is set, as Maven and Gradle use, otherwise the java on
-# PATH. Nothing is downloaded, and nothing outside those two is looked for.
+# run, so the plugin ships no compiled code. That needs a JDK 17 or later: the
+# one in JAVA_HOME if that is set, as Maven and Gradle use, otherwise the one
+# the java on the PATH belongs to. Nothing is downloaded, and nothing outside
+# those two is looked for.
 #
 # Claude Code runs hooks and Bash commands through Git Bash on Windows, so this
 # script covers Windows as well. vaadin-agent-tools.bat is for shells without sh.
 #
 # Exit codes: those of the CLI (0 ok, 1 findings or failure, 2 usage error), or
-# 3 when there is no Java 17 or later to run it with.
+# 3 when there is no JDK 17 or later to run it with.
 
 DIR="$(cd -P "$(dirname "$0")" && pwd)"
 SRC="$DIR/VaadinAgentTools.java"
@@ -19,26 +20,83 @@ SRC="$DIR/VaadinAgentTools.java"
 # A run is short and mostly compiling, so trade peak performance for startup.
 JVM_OPTS="-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -XX:-UsePerfData"
 
-# Sets JAVA to the java launcher to use. Fails, saying why on stderr, if there
-# is none.
+# Sets JAVA to the java launcher to use, and JDK to the installation it belongs
+# to. Fails, saying why on stderr, if there is none.
 find_java() {
   if [ -n "$JAVA_HOME" ]; then
-    for JAVA in "$JAVA_HOME/bin/java" "$JAVA_HOME/bin/java.exe"; do
+    JDK="$JAVA_HOME"
+    for JAVA in "$JDK/bin/java" "$JDK/bin/java.exe"; do
       [ -f "$JAVA" ] && [ -x "$JAVA" ] && return 0
     done
     echo "vaadin-agent-tools: JAVA_HOME is set to \"$JAVA_HOME\", which has no bin/java." \
       "Point it at a JDK 17 or later." >&2
     return 1
   fi
-  if JAVA="$(command -v java)" &&
-    # Without a JDK, macOS's /usr/bin/java stub offers to install one in a
-    # dialog. java_home finds out quietly whether there is one to run.
-    { [ "$JAVA" != /usr/bin/java ] || [ ! -x /usr/libexec/java_home ] ||
-      /usr/libexec/java_home >/dev/null 2>&1; }; then
+  if ! JAVA="$(command -v java)"; then
+    echo "vaadin-agent-tools: needs a JDK 17 or later, and found no java on the PATH." \
+      "Install one, or set JAVA_HOME to one." >&2
+    return 1
+  fi
+  if [ "$JAVA" = /usr/bin/java ] && [ -x /usr/libexec/java_home ]; then
+    # macOS's /usr/bin/java runs the JDK java_home picks, and without one offers
+    # to install one in a dialog. java_home answers quietly.
+    if ! JDK="$(/usr/libexec/java_home 2>/dev/null)"; then
+      echo "vaadin-agent-tools: needs a JDK 17 or later, and found none." \
+        "Install one, or set JAVA_HOME to one." >&2
+      return 1
+    fi
     return 0
   fi
-  echo "vaadin-agent-tools: needs Java 17 or later, and found no java on the PATH." \
-    "Install a JDK, or set JAVA_HOME to one." >&2
+  # Follow the links (/usr/bin/java -> /etc/alternatives/java -> ...) to the
+  # JDK's own bin/java.
+  p="$JAVA"
+  while [ -h "$p" ]; do
+    link="$(readlink "$p")"
+    case "$link" in
+      /*) p="$link" ;;
+      *) p="$(dirname "$p")/$link" ;;
+    esac
+  done
+  JDK="$(dirname "$(dirname "$p")")"
+}
+
+# Fails, saying why on stderr, unless $JAVA can run the CLI: Java 17 or later,
+# with the compiler (the jdk.compiler module), which source-file mode needs and
+# a JRE or a jlink-built runtime may lack. That fails clearly here rather than
+# with compiler errors or a stack trace. A JDK's release file says both without
+# starting Java; without one, java is asked.
+check_java() {
+  version="" modules=""
+  if [ -f "$JDK/release" ]; then
+    version="$(sed -n 's/^JAVA_VERSION="\([^"]*\)".*/\1/p' "$JDK/release")"
+    modules="$(sed -n 's/^MODULES="\([^"]*\)".*/\1/p' "$JDK/release")"
+  fi
+  if [ -z "$version" ] || [ -z "$modules" ]; then
+    # java -version prints, e.g., openjdk version "17.0.2", or java version
+    # "1.8.0_402" for Java 8; --list-modules prints jdk.compiler@17.0.2.
+    version="$("$JAVA" -version 2>&1 | sed -n 's/^.* version "\([^"]*\)".*/\1/p' | head -n 1)"
+    modules="$("$JAVA" --list-modules 2>/dev/null | sed -n 's/@.*//p' | tr '\n' ' ')"
+  fi
+  case "$version" in
+    1.*) major="${version#1.}" ;;
+    *) major="$version" ;;
+  esac
+  major="${major%%[!0-9]*}"
+  if [ -z "$major" ]; then
+    echo "vaadin-agent-tools: $JAVA did not run. Check the Java installation." >&2
+    return 1
+  fi
+  if [ "$major" -lt 17 ]; then
+    echo "vaadin-agent-tools: needs Java 17 or later, but $JAVA is Java $major." \
+      "Set JAVA_HOME to a JDK 17 or later." >&2
+    return 1
+  fi
+  case " $modules " in
+    *" jdk.compiler "*) return 0 ;;
+  esac
+  echo "vaadin-agent-tools: $JAVA is a Java $major runtime without the compiler" \
+    "(the jdk.compiler module), which running the tool needs. Set JAVA_HOME to a" \
+    "full JDK 17 or later." >&2
   return 1
 }
 
@@ -55,32 +113,12 @@ if [ "$1" = hook ]; then
     printf '%s' "$payload" |
       grep -qiE 'getstyle\(|classname|cssimport|stylesheet|theme|lumo|aura' || exit 0
   fi
-  # A hook must never get in the way of an edit: without Java it does nothing,
-  # and whatever happens it exits 0.
-  find_java 2>/dev/null || exit 0
+  # A hook must never get in the way of an edit: without a JDK that can run the
+  # CLI it does nothing, and whatever happens it exits 0.
+  { find_java && check_java; } 2>/dev/null || exit 0
   printf '%s' "$payload" | "$JAVA" $JVM_OPTS "$SRC" "$@"
   exit 0
 fi
 
-find_java || exit 3
-
-# Fail clearly on a Java too old to compile the CLI, rather than with a page of
-# compiler errors. java -version prints, e.g., openjdk version "17.0.2", or
-# java version "1.8.0_402" for Java 8.
-version="$("$JAVA" -version 2>&1 | sed -n 's/^.* version "\([^"]*\)".*/\1/p' | head -n 1)"
-case "$version" in
-  1.*) major="${version#1.}" ;;
-  *) major="$version" ;;
-esac
-major="${major%%[!0-9]*}"
-if [ -z "$major" ]; then
-  echo "vaadin-agent-tools: $JAVA did not run. Check the Java installation." >&2
-  exit 3
-fi
-if [ "$major" -lt 17 ]; then
-  echo "vaadin-agent-tools: needs Java 17 or later, but $JAVA is Java $major." \
-    "Set JAVA_HOME to a JDK 17 or later." >&2
-  exit 3
-fi
-
+find_java && check_java || exit 3
 exec "$JAVA" $JVM_OPTS "$SRC" "$@"

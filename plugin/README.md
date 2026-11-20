@@ -211,11 +211,12 @@ Without access to `vaadin.com`, see
 `vaadin-agent-tools` (see above), or remove an MCP server named `vaadin` that you
 added by hand.
 
-**"vaadin-agent-tools: needs Java 17 or later"** The checks and
-`vaadin-create-project` run on the JDK in `JAVA_HOME`, or else the `java` on the
-`PATH`. Install a JDK 17 or later, or point `JAVA_HOME` at one, and restart the
-agent so it sees the change. The documentation, add-on, theming, design, and
-form skills don't need Java.
+**"vaadin-agent-tools: needs a JDK 17 or later"**, or a similar message about
+the Java version or the compiler. The checks and `vaadin-create-project` run on
+the JDK in `JAVA_HOME`, or else the one the `java` on the `PATH` belongs to. A
+JRE won't do: they compile the tool when they run it. Install a JDK 17 or
+later, or point `JAVA_HOME` at one, and restart the agent so it sees the change.
+The documentation, add-on, theming, design, and form skills don't need Java.
 
 **The styling hook doesn't run in Codex.** Hooks run only for plugins installed
 from a marketplace, and Codex asks you to review and trust a plugin's hooks before

@@ -69,17 +69,81 @@ expect_exit 0 "the hook is silent without a JDK" \
   env JAVA_HOME="$OUT/no-jdk" sh "$CLI" hook post-tool-use <"$OUT/styling.json"
 [ ! -s "$OUT/stdout" ] && [ ! -s "$OUT/stderr" ] || fail "the hook printed something without a JDK"
 
-# The pre-filter: a stand-in java that only records that it ran.
-mkdir -p "$OUT/fake-jdk/bin"
-printf '#!/bin/sh\ncat >/dev/null\ntouch "%s"\n' "$OUT/java-ran" >"$OUT/fake-jdk/bin/java"
-chmod +x "$OUT/fake-jdk/bin/java"
-rm -f "$OUT/java-ran"
+# fake_jdk <dir> <version> <modules>: a stand-in JDK whose release file says
+# what is given, and whose java only records that it was asked to run the CLI.
+fake_jdk() {
+  mkdir -p "$1/bin"
+  printf 'JAVA_VERSION="%s"\nMODULES="%s"\n' "$2" "$3" >"$1/release"
+  printf '#!/bin/sh\ncat >/dev/null\ncase "$*" in *VaadinAgentTools.java*) touch "%s" ;; esac\n' \
+    "$OUT/java-ran" >"$1/bin/java"
+  chmod +x "$1/bin/java"
+  rm -f "$OUT/java-ran"
+}
+
+# The pre-filter.
+fake_jdk "$OUT/fake-jdk" 17.0.2 "java.base java.compiler jdk.compiler"
 expect_exit 0 "the hook skips Java for a non-styling edit" \
   env JAVA_HOME="$OUT/fake-jdk" sh "$CLI" hook post-tool-use <"$OUT/plain.json"
 [ ! -e "$OUT/java-ran" ] || fail "the pre-filter let a non-styling edit through"
 expect_exit 0 "the hook starts Java for a styling edit" \
   env JAVA_HOME="$OUT/fake-jdk" sh "$CLI" hook post-tool-use <"$OUT/styling.json"
 [ -e "$OUT/java-ran" ] || fail "the pre-filter dropped a styling edit"
+
+# A Java that can't run the CLI: the skills get exit code 3 and a message
+# instead of compiler errors or a stack trace, and the hook stays silent.
+# expect_unsupported <java home> <description> <message text>
+expect_unsupported() {
+  rm -f "$OUT/java-ran"
+  expect_exit 3 "$2 is reported" env JAVA_HOME="$1" sh "$CLI" check-theme-mixing .
+  grep -q "$3" "$OUT/stderr" || fail "the message for $2 lacks \"$3\": $(cat "$OUT/stderr")"
+  ! grep -q 'Exception' "$OUT/stderr" || fail "$2 printed a stack trace"
+  expect_exit 0 "the hook is silent with $2" \
+    env JAVA_HOME="$1" sh "$CLI" hook post-tool-use <"$OUT/styling.json"
+  [ ! -s "$OUT/stdout" ] && [ ! -s "$OUT/stderr" ] || fail "the hook printed something with $2"
+  [ ! -e "$OUT/java-ran" ] || fail "the launcher ran the CLI with $2"
+}
+fake_jdk "$OUT/jdk-11" 11.0.2 "java.base java.compiler jdk.compiler"
+expect_unsupported "$OUT/jdk-11" "a JDK 11 (from its release file)" "is Java 11"
+if [ -n "$OLD_JDK" ]; then
+  expect_unsupported "$OLD_JDK" "a real JDK older than 17" "needs Java 17 or later"
+fi
+# A runtime without the compiler, like a JRE: one made with jlink, both with
+# its release file and, so that java is asked instead, without it.
+jlink --add-modules java.base --output "$OUT/jre"
+expect_unsupported "$OUT/jre" "a runtime without the compiler" "jdk.compiler"
+rm "$OUT/jre/release"
+expect_unsupported "$OUT/jre" "a runtime without the compiler or a release file" "jdk.compiler"
+
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) windows=1 ;;
+  *) windows="" ;;
+esac
+
+if [ -z "$windows" ]; then
+  # Without JAVA_HOME, the java on the PATH leads to its JDK through links,
+  # as /usr/bin/java -> /etc/alternatives/java -> ... does on Linux.
+  mkdir -p "$OUT/linked"
+  ln -s "$(command -v java)" "$OUT/linked/java"
+  expect_exit 0 "java on the PATH is followed through links" \
+    env -u JAVA_HOME PATH="$OUT/linked:$PATH" sh "$CLI" check-theme-mixing test/fixtures/clean
+
+  # create-project gives each file the archive's permissions minus the umask,
+  # as creating it with them does: with umask 017, 0755 becomes 0740.
+  if command -v zip >/dev/null 2>&1; then
+    mkdir -p "$OUT/skeleton/my-app"
+    printf '#!/bin/sh\n' >"$OUT/skeleton/my-app/mvnw"
+    chmod 755 "$OUT/skeleton/my-app/mvnw"
+    (cd "$OUT/skeleton" && zip -qr ../skeleton.zip my-app)
+    expect_exit 0 "create-project extracts a skeleton" \
+      sh -c 'umask 017 && exec sh "$@"' sh "$CLI" create-project "$OUT/created" --skeleton="$OUT/skeleton.zip"
+    mode="$(ls -l "$OUT/created/mvnw" | cut -c1-10)"
+    [ "$mode" = "-rwxr-----" ] || fail "with umask 017, a 0755 entry became $mode, not -rwxr-----"
+    mode="$(ls -ld "$OUT/created" | cut -c1-10)"
+    [ "$mode" = "drwxr-----" ] || fail "with umask 017, the project directory became $mode, not drwxr-----"
+  else
+    echo "skip  create-project permissions (no zip command)"
+  fi
+fi
 
 # And the real thing: a styling edit in a project that mixes themes.
 printf '<project/>' >test/fixtures/mixed/pom.xml

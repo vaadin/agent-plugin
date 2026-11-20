@@ -32,6 +32,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Too old to run the CLI; the launchers must say so with exit code 3.
+      - id: old-jdk
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      # Set up last, so this one is in JAVA_HOME and on the PATH.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -40,8 +48,12 @@ jobs:
       - name: Test
         shell: bash
         run: sh scripts/test-cli.sh
+        env:
+          OLD_JDK: ${{ steps.old-jdk.outputs.path }}
 
-      - name: Run the cmd launcher
+      - name: Test the cmd launcher
         if: runner.os == 'Windows'
         shell: cmd
-        run: plugin\cli\vaadin-agent-tools.bat check-theme-mixing test\fixtures\clean --json
+        run: scripts\test-launcher.bat
+        env:
+          OLD_JDK: ${{ steps.old-jdk.outputs.path }}
