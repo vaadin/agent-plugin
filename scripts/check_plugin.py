@@ -112,6 +112,28 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
             head = f.read(4)
         if entry.lower().endswith(COMPILED_EXTENSIONS) or head.startswith(COMPILED_MAGIC):
             fail(f"{rel} is compiled code, which holds the plugin back in the Claude directory's review")
+# The Claude directory refuses a repository whose .gitattributes asks for any
+# line ending other than LF. Batch files, which cmd needs with CRLF, are marked
+# -text instead and committed with CRLF, so Git never converts them.
+with open(os.path.join(ROOT, "..", ".gitattributes"), encoding="utf-8") as f:
+    for number, line in enumerate(f, 1):
+        rule = line.split()
+        if rule and not rule[0].startswith("#") and any(
+                a.startswith("eol=") and a != "eol=lf" for a in rule[1:]):
+            fail(f".gitattributes:{number}: the Claude directory only accepts eol=lf; "
+                 "mark batch files -text instead")
+for dirpath, _, filenames in os.walk(os.path.join(ROOT, "..")):
+    if ".git" in os.path.relpath(dirpath, os.path.join(ROOT, "..")).split(os.sep):
+        continue
+    for entry in filenames:
+        if entry.lower().endswith((".bat", ".cmd")):
+            path = os.path.join(dirpath, entry)
+            with open(path, "rb") as f:
+                content = f.read()
+            if content.count(b"\n") != content.count(b"\r\n"):
+                fail(f"{os.path.relpath(path, os.path.join(ROOT, '..'))} must have CRLF line endings, "
+                     "or cmd misreads its labels")
+
 if os.path.isdir(os.path.join(ROOT, "bin")):
     fail("a top-level bin/ directory stops claude.ai and Cowork from installing the plugin")
 

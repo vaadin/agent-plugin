@@ -1,6 +1,7 @@
 # Keep the launchers' line endings whatever core.autocrlf says (Git for Windows
 # defaults to true): sh can't run a script with CRLF line endings, and cmd
-# misreads labels in a batch file without them.
+# misreads labels in a batch file without them. Batch files are stored with
+# CRLF line endings and marked -text so Git never converts them.
 plugin/cli/vaadin-agent-tools text eol=lf
 *.sh text eol=lf
-*.bat text eol=crlf
+*.bat -text
