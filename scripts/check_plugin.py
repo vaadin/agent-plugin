@@ -41,10 +41,38 @@ if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?", codex.get("version", "")
 if codex.get("mcpServers") != "./.mcp.json":
     fail("the Codex manifest must declare mcpServers as ./.mcp.json")
 
-for name, server in mcp.get("mcpServers", {}).items():
+servers = mcp.get("mcpServers", {})
+for name, server in servers.items():
     url = server.get("url", "")
-    if not url.startswith("https://"):
-        fail(f"MCP server '{name}' must use an https:// URL")
+    if "${" in url:
+        fail(f".mcp.json: MCP server '{name}' must not use a variable in its URL, which Codex doesn't expand")
+    elif not url.startswith("https://"):
+        fail(f".mcp.json: MCP server '{name}' must use an https:// URL")
+
+# Claude Code reads .mcp.json too, and a server declared in its manifest takes the
+# place of the one of the same name there. That's how Claude Code users get a
+# ${VAR:-default} URL they can override, which Codex would use literally. Once the
+# defaults are substituted, each must equal its server in .mcp.json.
+VARIABLE = re.compile(r"\$\{(\w+):-([^}]*)\}")
+with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as f:
+    readme = f.read()
+inline = claude.get("mcpServers", {})
+if not isinstance(inline, dict):
+    fail("the Claude manifest must declare mcpServers inline; Claude Code reads .mcp.json on its own")
+    inline = {}
+for name, server in inline.items():
+    for variable, _ in VARIABLE.findall(server.get("url", "")):
+        if variable not in readme:
+            fail(f"README.md doesn't document {variable}, which MCP server '{name}' reads")
+    url = VARIABLE.sub(lambda m: m.group(2), server.get("url", ""))
+    if "${" in url:
+        fail(f"the Claude manifest: MCP server '{name}' needs a default for each variable, as in ${{NAME:-https://...}}")
+    elif not url.startswith("https://"):
+        fail(f"the Claude manifest: MCP server '{name}' must default to an https:// URL")
+    if name not in servers:
+        fail(f"the Claude manifest declares MCP server '{name}', which .mcp.json doesn't")
+    elif {**server, "url": url} != servers[name]:
+        fail(f"MCP server '{name}' differs between the Claude manifest and .mcp.json")
 
 ui = codex.get("interface", {})
 limits = {"displayName": 30, "shortDescription": 30, "longDescription": 4000, "developerName": 80}

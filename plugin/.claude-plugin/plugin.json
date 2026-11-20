@@ -23,6 +23,12 @@
     "theme",
     "aura"
   ],
+  "mcpServers": {
+    "vaadin": {
+      "type": "http",
+      "url": "${VAADIN_DOCS_MCP_URL:-https://mcp.vaadin.com/docs}"
+    }
+  },
   "icon": "./assets/vaadin-icon.svg",
   "documentationUrl": "https://vaadin.com/docs/latest/building-apps/agentic-development",
   "supportUrl": "https://github.com/vaadin/agent-plugin/issues",

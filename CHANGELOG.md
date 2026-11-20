@@ -18,6 +18,9 @@ First version of the combined Vaadin plugin. It replaces `vaadin-skills`
   covers CSS or Java that sets styles.
 - Manifest metadata for the Claude and OpenAI plugin directories, and a
   square icon.
+- In Claude Code, `VAADIN_DOCS_MCP_URL` points the `vaadin` documentation
+  server at a self-hosted one, for networks that can't reach `vaadin.com`
+  ([#3](https://github.com/vaadin/agent-plugin/issues/3)).
 
 ### Changed
 

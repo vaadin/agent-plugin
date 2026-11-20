@@ -133,26 +133,29 @@ same tools, such as `search_vaadin_docs`, `get_java_symbol`, and
 
 ### Claude Code
 
-Block the hosted servers in your settings (`~/.claude/settings.json`), or in
-managed settings for a whole organization:
+Set `VAADIN_DOCS_MCP_URL` to your server's URL, and the plugin's `vaadin` server
+connects there instead of to `https://mcp.vaadin.com/docs`. Set it under `env`
+in your settings (`~/.claude/settings.json`), or in managed settings for a
+whole organization. Block the Directory server there as well, or it keeps
+failing to connect to `vaadin.com`:
 
 ```json
 {
+  "env": {
+    "VAADIN_DOCS_MCP_URL": "https://docs-mcp.example.internal/docs"
+  },
   "deniedMcpServers": [
-    { "serverUrl": "https://mcp.vaadin.com/*" },
     { "serverUrl": "https://vaadin.com/directory/*" }
   ]
 }
 ```
 
-Then add your own server:
+An environment variable set in the shell that starts Claude Code works as well.
+To go back to the hosted server, remove the variable rather than leaving it
+empty: an empty value leaves the server with no URL.
 
-```shell
-claude mcp add --transport http --scope user vaadin https://docs-mcp.example.internal/docs
-```
-
-`claude mcp list` should show your `vaadin` server, and no longer show
-`plugin:vaadin:vaadin` or `plugin:vaadin:vaadin-directory`.
+Restart Claude Code, and `claude mcp list` should show `plugin:vaadin:vaadin`
+with your URL, and no longer show `plugin:vaadin:vaadin-directory`.
 
 ### Codex
 

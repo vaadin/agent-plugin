@@ -11,7 +11,7 @@ and share the rest:
 
 ```text
 plugin/
-├── .claude-plugin/plugin.json   # Claude Code manifest
+├── .claude-plugin/plugin.json   # Claude Code manifest, and its override of the docs server
 ├── .codex-plugin/plugin.json    # Codex manifest
 ├── .mcp.json                    # the two hosted MCP servers, read by both hosts
 ├── README.md                    # user documentation and Claude directory listing text
@@ -34,7 +34,7 @@ Outside `plugin/`:
 - `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`:
   one-plugin development marketplaces for each host.
 
-Two layout rules come from the hosts:
+Three layout rules come from the hosts:
 
 - **No top-level `bin/` in `plugin/`.** claude.ai and Cowork refuse to install a
   plugin that has one, and directory installs from claude.ai sync into Claude
@@ -43,6 +43,14 @@ Two layout rules come from the hosts:
 - **Codex reads `.codex-plugin/plugin.json`.** OpenAI recommends a portable root
   `plugin.json` with an `extensions.com.openai` object instead, but Codex 0.163
   ignores the hooks declared there. Revisit when Codex supports it.
+- **No variables in `.mcp.json`.** Codex doesn't expand them and would use the
+  URL literally. The `vaadin` server is declared a second time, in
+  `.claude-plugin/plugin.json`, with the URL
+  `${VAADIN_DOCS_MCP_URL:-https://mcp.vaadin.com/docs}`. Claude Code loads both
+  files and uses the manifest's server in place of the one of the same name in
+  `.mcp.json`; that's what Claude Code 2.1.318 does, but it isn't documented.
+  Change both together: `check_plugin.py` fails unless they match once the
+  default is substituted.
 
 ## Checks
 
