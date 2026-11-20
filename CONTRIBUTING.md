@@ -34,7 +34,7 @@ Outside `plugin/`:
 - `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`:
   one-plugin development marketplaces for each host.
 
-Two layout rules come from the hosts:
+Three layout rules come from the hosts:
 
 - **No top-level `bin/` in `plugin/`.** claude.ai and Cowork refuse to install a
   plugin that has one, and directory installs from claude.ai sync into Claude
@@ -43,6 +43,12 @@ Two layout rules come from the hosts:
 - **Codex reads `.codex-plugin/plugin.json`.** OpenAI recommends a portable root
   `plugin.json` with an `extensions.com.openai` object instead, but Codex 0.163
   ignores the hooks declared there. Revisit when Codex supports it.
+- **A line-ending rule in `.gitattributes` may only set `eol=lf`.** The Claude
+  directory refuses to scan a plugin when a rule could make Git check out other
+  bytes than it scans, which includes `* text=auto`, and it reads every
+  `.gitattributes` in the repository. `.bat` files keep their CRLF line endings
+  by being committed with them under `*.bat -text`; after editing one, check
+  that it still has them. `check_plugin.py` checks both.
 
 ## Checks
 

@@ -1,6 +1,13 @@
-# Keep the launchers' line endings whatever core.autocrlf says (Git for Windows
-# defaults to true): sh can't run a script with CRLF line endings, and cmd
-# misreads labels in a batch file without them.
+# The Claude plugin directory refuses to scan a plugin when a rule here could
+# make Git check out other bytes than it scans: a line-ending rule may only set
+# eol=lf, or switch conversion off with -text. scripts/check_plugin.py checks.
+
+# sh can't run a script with CRLF line endings, so the launcher and the shell
+# scripts get LF whatever core.autocrlf says (Git for Windows defaults to true).
 plugin/cli/vaadin-agent-tools text eol=lf
 *.sh text eol=lf
-*.bat text eol=crlf
+
+# cmd misreads labels in a batch file without CRLF line endings, so .bat files
+# are committed with them and never converted. Keep this after every other rule
+# that matches a .bat file.
+*.bat -text

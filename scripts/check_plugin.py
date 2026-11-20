@@ -112,8 +112,41 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
             head = f.read(4)
         if entry.lower().endswith(COMPILED_EXTENSIONS) or head.startswith(COMPILED_MAGIC):
             fail(f"{rel} is compiled code, which holds the plugin back in the Claude directory's review")
+        # cmd misreads labels in a batch file without CRLF line endings. They are
+        # committed with them, since .gitattributes may not ask Git to convert.
+        if entry.lower().endswith((".bat", ".cmd")):
+            with open(path, "rb") as f:
+                data = f.read()
+            if data.count(b"\n") != data.count(b"\r\n"):
+                fail(f"{rel} must have CRLF line endings; commit it with them, under a -text rule")
 if os.path.isdir(os.path.join(ROOT, "bin")):
     fail("a top-level bin/ directory stops claude.ai and Cowork from installing the plugin")
+
+# The Claude directory refuses to scan a plugin when a .gitattributes rule could
+# make Git check out other bytes than it scans, even `* text=auto`, and matches
+# patterns more broadly than Git does, so check every rule in the repository. A
+# rule may switch conversion off (-text, -crlf), set a bare binary, or have
+# eol=lf as its only eol setting.
+REPO = os.path.dirname(ROOT)
+LINE_ENDING_ATTR = re.compile(r"[-!]?(?:text|crlf|eol)(?:=.*)?|[-!]binary|binary=.*")
+for dirpath, dirnames, filenames in os.walk(REPO):
+    dirnames[:] = [d for d in dirnames if d not in (".git", "node_modules")]
+    if ".gitattributes" not in filenames:
+        continue
+    path = os.path.join(dirpath, ".gitattributes")
+    rel = os.path.relpath(path, REPO)
+    with open(path, encoding="utf-8") as f:
+        for number, line in enumerate(f, 1):
+            fields = line.split()
+            if not fields or fields[0].startswith("#"):
+                continue
+            attrs = [a for a in fields[1:] if LINE_ENDING_ATTR.fullmatch(a) and a not in ("-text", "-crlf")]
+            if not attrs:
+                continue
+            if any("binary" in a for a in attrs) or [a for a in attrs if "eol" in a] != ["eol=lf"] \
+                    or any("crlf" in a for a in attrs):
+                fail(f"{rel}:{number}: the Claude directory refuses this line-ending rule; give it eol=lf "
+                     f"as its only eol setting, or use -text (as for .bat files)")
 
 for message in errors:
     print(f"✗ {message}")
