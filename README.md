@@ -15,15 +15,14 @@ The plugin replaces two earlier plugins, whose sources were merged here:
   (`vaadin-skills`): the docs MCP server and the theming, design, form, testing,
   and review skills
 - [`vaadin/agent-tools`](https://github.com/vaadin/agent-tools)
-  (`vaadin-agent-tools`): the native CLI, its skills, and the styling hook
+  (`vaadin-agent-tools`): the CLI, its skills, and the styling hook
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
 | [`plugin/`](plugin) | The plugin itself, exactly as users install it |
-| [`go/`](go) | Source of the `vaadin-agent-tools` CLI bundled in `plugin/cli/` |
-| [`test/fixtures/`](test/fixtures) | Sample projects for the CLI tests |
+| [`test/`](test) | Tests for the `vaadin-agent-tools` CLI in `plugin/cli/`, and their sample projects |
 | [`tools/aura-reference/`](tools/aura-reference) | Generator for the Aura property tables in the `aura-theme` skill |
 | [`scripts/`](scripts) | Packaging and maintenance scripts |
 | `.claude-plugin/`, `.agents/plugins/` | Development marketplaces for testing from a checkout |
