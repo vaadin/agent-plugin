@@ -99,11 +99,11 @@ In Codex, use `codex plugin remove` with the same names.
 ## Requirements
 
 - Claude Code or Codex.
-- A JDK and Maven or Gradle to build and run Vaadin projects. The plugin itself
-  needs no Java, Node.js, or other runtime.
-- For the checks and `vaadin-create-project`: macOS (Apple silicon or Intel),
-  Linux (x64 or arm64), or Windows (x64). They use a native tool bundled with the
-  plugin.
+- A JDK and Maven or Gradle to build and run Vaadin projects.
+- For the checks, the styling hook, and `vaadin-create-project`: Java 17 or
+  later, which the JDK you build with already is. They run a tool bundled with
+  the plugin as Java source, with the JDK in `JAVA_HOME`, or else the `java` on
+  the `PATH`. Nothing else needs Java, Node.js, or another runtime.
 - For `vaadin-create-project`: `curl`, which comes with macOS, Windows 10 and
   later, and most Linux distributions.
 
@@ -121,6 +121,7 @@ In Codex, use `codex plugin remove` with the same names.
 - **The checks and the styling hook** run on your machine. They read the
   project's `.css` and `.java` files and send nothing anywhere.
 - **The bundled tool** (`cli/`) never accesses the network.
+- The plugin collects no telemetry of its own.
 
 ## Using your own documentation server
 
@@ -187,13 +188,16 @@ name; this was checked with Codex 0.163.
 ## Source of the bundled tool
 
 The checks, the styling hook, and `vaadin-create-project` run
-`vaadin-agent-tools`, a native tool in `cli/platform/`. It's built from the Go
-source in [`go/`](https://github.com/vaadin/agent-plugin/tree/main/go) in the
-plugin's repository. The build is reproducible: rebuilding a commit with
-[`go/build.sh`](https://github.com/vaadin/agent-plugin/blob/main/go/build.sh)
-gives byte-identical binaries, and CI checks that the committed binaries match
-the source.
-- The plugin collects no telemetry of its own.
+`vaadin-agent-tools`, whose whole source is one file,
+[`cli/VaadinAgentTools.java`](https://github.com/vaadin/agent-plugin/blob/main/plugin/cli/VaadinAgentTools.java).
+The plugin ships no compiled code: the launcher, `cli/vaadin-agent-tools`, runs
+that file with `java VaadinAgentTools.java` (Java's source-file mode), which
+compiles it in memory each time. It uses nothing but the JDK.
+
+The styling hook runs after every file edit, but starts Java only for edits
+that could touch styling: `.css` files, and `.java` edits that mention a styling
+API. Those take a fraction of a second longer, to compile the tool. Without
+Java, the hook does nothing.
 
 ## Troubleshooting
 
@@ -207,9 +211,11 @@ Without access to `vaadin.com`, see
 `vaadin-agent-tools` (see above), or remove an MCP server named `vaadin` that you
 added by hand.
 
-**"no bundled binary for …"** The checks and `vaadin-create-project` support the
-platforms listed under [Requirements](#requirements). The documentation, add-on,
-theming, design, and form skills work everywhere.
+**"vaadin-agent-tools: needs Java 17 or later"** The checks and
+`vaadin-create-project` run on the JDK in `JAVA_HOME`, or else the `java` on the
+`PATH`. Install a JDK 17 or later, or point `JAVA_HOME` at one, and restart the
+agent so it sees the change. The documentation, add-on, theming, design, and
+form skills don't need Java.
 
 **The styling hook doesn't run in Codex.** Hooks run only for plugins installed
 from a marketplace, and Codex asks you to review and trust a plugin's hooks before

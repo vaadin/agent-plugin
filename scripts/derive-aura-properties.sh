@@ -1,6 +1,6 @@
 #!/bin/sh
 # Re-derive the Aura custom-property list from the published theme package and
-# diff it against the table embedded in go/internal/tools/auradata.go, so drift
+# diff it against the table embedded in plugin/cli/VaadinAgentTools.java, so drift
 # shows up when a new Vaadin version ships.
 #
 #   sh scripts/derive-aura-properties.sh [version]
@@ -10,7 +10,7 @@
 # What this can and cannot tell you:
 #
 #   - The *names* are fully derivable and are what this script checks. A name the
-#     theme gained or dropped shows up as a diff against auraKnownProperties.
+#     theme gained or dropped shows up as a diff against KNOWN_PROPERTIES.
 #   - The *write-safety* classification is NOT derivable from the CSS. Several
 #     properties are computed from other properties and are still the documented,
 #     intended override points (--aura-neutral-light, --aura-shadow-color, …), so
@@ -18,12 +18,12 @@
 #     most. That split lives in the Vaadin Aura reference pages, where a
 #     read-only property carries a `Read-only` or `light-dark()` badge. When this
 #     script reports new or changed names, classify them from those pages and
-#     update auraReadOnlyProperties by hand.
+#     update READ_ONLY by hand.
 set -e
 cd "$(dirname "$0")/.." # repo root
 
 VERSION="${1:-25.3.0-rc1}"
-DATA="go/internal/tools/auradata.go"
+DATA="plugin/cli/VaadinAgentTools.java"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -41,8 +41,8 @@ grep -rhoE 'var\([[:space:]]*--aura-[a-z0-9-]+' "$SRC"/*.css "$SRC"/components/*
   | sed -E 's/^var\([[:space:]]*//' | sort -u > "$TMP/read"
 sort -u "$TMP/defined" "$TMP/read" > "$TMP/derived"
 
-# The names embedded in the Go table (the auraKnownProperties block only).
-sed -n '/^var auraKnownProperties/,/^}/p' "$DATA" \
+# The names embedded in the Java table (the KNOWN_PROPERTIES block only).
+sed -n '/KNOWN_PROPERTIES = Set.of(/,/);/p' "$DATA" \
   | grep -oE '"--aura-[a-z0-9-]+"' | tr -d '"' | sort -u > "$TMP/embedded"
 
 echo "derived: $(wc -l < "$TMP/defined" | tr -d ' ') defined + \
@@ -52,7 +52,7 @@ echo "embedded in $DATA: $(wc -l < "$TMP/embedded" | tr -d ' ') names"
 echo
 
 if diff -u "$TMP/embedded" "$TMP/derived" > "$TMP/diff"; then
-  echo "✓ auraKnownProperties is up to date with @vaadin/aura@$VERSION."
+  echo "✓ KNOWN_PROPERTIES is up to date with @vaadin/aura@$VERSION."
   exit 0
 fi
 
@@ -60,6 +60,6 @@ echo "✗ The embedded list differs from @vaadin/aura@$VERSION (- embedded, + de
 echo
 sed '1,2d' "$TMP/diff"
 echo
-echo "Update auraKnownProperties in $DATA, then classify any new name as"
+echo "Update KNOWN_PROPERTIES in AuraData in $DATA, then classify any new name as"
 echo "read-only or customizable from its badge in the Vaadin Aura reference pages."
 exit 1

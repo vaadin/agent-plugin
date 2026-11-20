@@ -30,9 +30,10 @@ Hilla view's `style={{ '--aura-…': … }}` is not covered either.
 
 ## Run it
 
-The checker is a self-contained native binary bundled with this plugin. It
-needs no Node.js or JVM, and it never downloads or searches the machine for a
-runtime. Use `.` for `<project-dir>` if the user did not name one.
+The checker is a Java source file bundled with this plugin, which its launcher
+runs with the JDK the project builds with: Java 17 or later, from `JAVA_HOME`,
+or else the `java` on the PATH. It never downloads anything. Use `.` for
+`<project-dir>` if the user did not name one.
 
 The launcher is `cli/vaadin-agent-tools` at the root of this plugin, two levels
 above the directory that holds this SKILL.md. In Claude Code the plugin root is
@@ -50,6 +51,9 @@ In Codex, build the path from this skill's own location instead:
 
 On Windows without a POSIX shell, run `cli\vaadin-agent-tools.bat` with the same
 arguments.
+
+If it exits with code `3`, there is no Java 17 or later to run it with: tell
+the user what it printed (install a JDK, or point `JAVA_HOME` at one).
 
 ## Read the result
 

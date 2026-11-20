@@ -20,15 +20,15 @@ plugin/
 ├── skills/                      # one directory per skill
 ├── hooks/hooks.json             # PostToolUse styling checks
 └── cli/
-    ├── vaadin-agent-tools       # POSIX launcher: picks the native binary by uname
-    ├── vaadin-agent-tools.bat   # Windows launcher
-    └── platform/                # native binaries, built by go/build.sh and committed
+    ├── VaadinAgentTools.java    # the whole vaadin-agent-tools CLI, as source
+    ├── vaadin-agent-tools       # POSIX launcher: runs it with java
+    └── vaadin-agent-tools.bat   # Windows launcher, for shells without sh
 ```
 
 Outside `plugin/`:
 
-- `go/`: source of the `vaadin-agent-tools` CLI.
-- `test/fixtures/`: sample projects used by the Go tests.
+- `test/VaadinAgentToolsTest.java`: the CLI's tests.
+- `test/fixtures/`: sample projects used by the CLI's tests.
 - `tools/aura-reference/`: generator for the `aura-theme` skill's property tables.
 - `scripts/`: packaging and maintenance scripts.
 - `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`:
@@ -48,14 +48,14 @@ Two layout rules come from the hosts:
 
 ```shell
 python3 scripts/check_plugin.py                   # manifests, skills, directory limits
-(cd go && go vet ./... && go test ./...)          # CLI
+sh scripts/test-cli.sh                            # CLI (needs a JDK 17 or later)
 node --test 'tools/aura-reference/*.test.mjs'     # Aura reference generator
 node tools/aura-reference/generate.mjs --check    # generated tables are current
 claude plugin validate plugin                     # Claude Code's own validator
 ```
 
-CI runs all but the last, and also rebuilds the binaries and fails if they
-differ from the committed ones.
+CI runs all but the last. It runs the CLI tests with Java 17 on Linux, macOS,
+and Windows, and with Java 25 on Linux.
 
 ## Skills
 
@@ -77,54 +77,75 @@ the agent loads only when the skill tells it to.
 
 ## The CLI (`vaadin-agent-tools`)
 
-The checks and the project bootstrapper are a small Go CLI compiled ahead of
-time for each platform, so the plugin needs no Node.js or JVM at runtime and
-never looks outside its own directory for something to execute. The CLI doesn't
-access the network: `vaadin-create-project` downloads the skeleton with `curl`
-and hands the ZIP to `create-project`. Keep it that way; `net/http` and
-`crypto/tls` alone would push every binary over the size limit below.
+The checks and the project bootstrapper are one Java source file,
+`plugin/cli/VaadinAgentTools.java`. The launcher runs it with
+`java VaadinAgentTools.java`, Java's source-file mode (JEP 330), which compiles
+it in memory on every run. The plugin ships no compiled code, because the Claude
+plugin directory's review holds back plugins with executables or bytecode in
+them; `check_plugin.py` fails on any. A Vaadin developer is the one user sure to
+have a JDK, so this needs no runtime they don't already have.
+
+Rules that keep this working:
+
+- **One file.** Source-file mode runs a program from several files only from
+  Java 22 (JEP 458), and the CLI must run on Java 17, the oldest JDK Vaadin 24
+  supports. Use nested classes.
+- **Java 17 and the JDK only.** There is no build to fetch a dependency. The
+  JDK has no JSON parser, so the file has a small one. CI compiles the file
+  with JDK 17, with `-Xlint:all -Werror`, since every run would print a
+  compiler warning.
+- **ASCII only.** JDK 17 reads source in the platform's charset, and a
+  non-ASCII character fails the compile under a C or POSIX locale. Write
+  Unicode escapes in strings. A test checks this.
+- **No network access.** `vaadin-create-project` downloads the skeleton with
+  `curl` and hands the ZIP to `create-project`.
+
+The launcher prefers the JDK in `JAVA_HOME`, like Maven and Gradle, then the
+`java` on the `PATH`. Without Java 17 or later, it explains on stderr and exits
+with `3`; the skills tell the agent to pass that on. Claude Code runs hooks and
+Bash commands through Git Bash on Windows, so the `sh` launcher covers Windows
+too; the `.bat` one is for cmd and PowerShell.
 
 The command line is the contract: `vaadin-agent-tools <tool> [args] [--json]`,
 a `{ "tool", "ok", ... }` JSON envelope, and exit codes `0` (no error-level
 findings), `1` (findings or failure), `2` (usage error). The CLI has no version
 of its own; it ships with, and is versioned as, the plugin.
 
-### Rebuilding the binaries
-
-The binaries in `plugin/cli/platform/` are committed so that a git install
-works with no build step. When you change anything under `go/`, rebuild them
-(on any OS) and commit them in the same change:
+To run the CLI from a checkout, call the launcher:
 
 ```shell
-sh go/build.sh && git add plugin/cli/platform
+plugin/cli/vaadin-agent-tools check-aura-usage test/fixtures/aura-readonly
 ```
 
-The build is reproducible. `go/build.sh` uses the Go version on the `toolchain`
-line of `go/go.mod` (downloading it if needed) and leaves the commit out of the
-binaries, so CI can rebuild them from the source and compare. To move to a newer
-Go, change that line and rebuild.
+### Tests
 
-The Claude plugin directory rejects any file over 5 MiB, and
-`claude plugin validate` doesn't check this (`check_plugin.py` does). The
-binaries are about 3.5 MB each. Don't compress them with UPX: packed executables
-get flagged by the directory's scanner.
-
-Don't rebuild for changes outside `go/`: every rebuild adds about 17 MB to the
-repository history.
+`test/VaadinAgentToolsTest.java` is plain Java: every static `test*` method is
+a test, and they reach into the CLI's package-private classes, so the two files
+are compiled together. `sh scripts/test-cli.sh` compiles and runs them, then
+checks the launcher: exit codes, the missing-JDK message, and the hook's
+pre-filter. Pass part of a test name to run only the matching tests.
 
 ### Adding a tool
 
-1. Create `go/internal/tools/<name>.go` defining a `tool.Descriptor`.
-2. Register it in the `registry` slice in `go/internal/cli/cli.go`.
-3. Add `plugin/skills/vaadin-<name>/SKILL.md` so agents discover it.
-4. Rebuild the binaries.
+1. Add a nested class to `VaadinAgentTools.java` with a `run(Args)` method
+   that returns a `Result`, next to the existing tools.
+2. List it in `TOOLS`.
+3. Add tests to `test/VaadinAgentToolsTest.java`.
+4. Add `plugin/skills/vaadin-<name>/SKILL.md` so agents discover it.
 
 ### The styling hook
 
 `plugin/hooks/hooks.json` runs `vaadin-agent-tools hook post-tool-use` after
 file edits. It stays silent unless an edited `.css` file, or a `.java` edit that
 touches a Vaadin styling API, leaves an error-level theme-mixing or Aura-usage
-finding. Test it by hand:
+finding.
+
+Compiling the CLI takes a few tenths of a second, so the launcher skips Java for
+most edits: it greps the event for words that every styling edit contains, and
+exits when there are none. Its word list must cover every alternative of
+`Hook.JAVA_STYLING`, which a test checks; update both together.
+
+Test it by hand:
 
 ```shell
 echo '{"tool_input":{"file_path":"/abs/path/App.java","new_string":"btn.getStyle().set(\"color\",\"red\");"}}' \
@@ -147,8 +168,8 @@ Two places embed facts about the Aura theme, both derived from the published
   produced by `tools/aura-reference/`. Never edit them by hand; run
   `node tools/aura-reference/generate.mjs`. See
   [`tools/aura-reference/README.md`](tools/aura-reference/README.md).
-- The property tables in `go/internal/tools/auradata.go`, used by
-  `check-aura-usage`. Diff them against a release with
+- The property tables in `AuraData` in `plugin/cli/VaadinAgentTools.java`, used
+  by `check-aura-usage`. Diff them against a release with
   `sh scripts/derive-aura-properties.sh <version>`.
 
 When a new Aura version ships, update both.
@@ -188,9 +209,9 @@ To try a change without touching your own setup, point `CLAUDE_CONFIG_DIR` or
 Submit at [claude.ai/directory/manage](https://claude.ai/directory/manage)
 (**Submit new**, then **Plugin bundle**), with this repository as the source,
 `plugin` as the plugin path, and the branch or tag the listing should track.
-Every new version is validated and security-scanned. The bundled binaries are
-compiled executables, so expect a release that changes them to be held for
-human review.
+Every new version is validated and security-scanned. A plugin with compiled
+code in it, executables or bytecode, is held for human review, which is why the
+CLI ships as source.
 
 ### OpenAI plugin directory
 

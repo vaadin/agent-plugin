@@ -39,8 +39,9 @@ parameters; check them against the list above.
 
 ## 2. Extract it
 
-The bundled tool is a self-contained native binary. It needs no Node.js or JVM
-and doesn't access the network.
+The bundled tool is a Java source file, which its launcher runs with the JDK
+the new project will build with: Java 17 or later, from `JAVA_HOME`, or else
+the `java` on the PATH. It doesn't access the network.
 
 The launcher is `cli/vaadin-agent-tools` at the root of this plugin, two levels
 above the directory that holds this SKILL.md. In Claude Code the plugin root is
@@ -58,6 +59,9 @@ In Codex, build the path from this skill's own location instead:
 
 On Windows without a POSIX shell, run `cli\vaadin-agent-tools.bat` with the same
 arguments.
+
+If it exits with code `3`, there is no Java 17 or later to run it with: tell
+the user what it printed (install a JDK, or point `JAVA_HOME` at one).
 
 Flags:
 

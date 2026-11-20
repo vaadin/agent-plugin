@@ -1,40 +1,86 @@
 #!/bin/sh
-# Selector for the vaadin-agent-tools plugin.
+# Launcher for vaadin-agent-tools, the plugin's CLI.
 #
-# Execs the bundled native binary for this OS/arch. It only ever runs code
-# shipped INSIDE this plugin (cli/platform/) — it never searches $HOME or PATH
-# for a runtime, and needs neither Node nor a JVM.
-set -e
+# The CLI is one Java source file, VaadinAgentTools.java, next to this script.
+# Java runs it in source-file mode (JEP 330), compiling it in memory on every
+# run, so the plugin ships no compiled code. It needs Java 17 or later: the JDK
+# in JAVA_HOME if that is set, as Maven and Gradle use, otherwise the java on
+# PATH. Nothing is downloaded, and nothing outside those two is looked for.
+#
+# Claude Code runs hooks and Bash commands through Git Bash on Windows, so this
+# script covers Windows as well. vaadin-agent-tools.bat is for shells without sh.
+#
+# Exit codes: those of the CLI (0 ok, 1 findings or failure, 2 usage error), or
+# 3 when there is no Java 17 or later to run it with.
 
 DIR="$(cd -P "$(dirname "$0")" && pwd)"
-P="$DIR/platform"
-os="$(uname -s)"
-arch="$(uname -m)"
-BIN=""
+SRC="$DIR/VaadinAgentTools.java"
 
-case "$os" in
-  Darwin)
-    case "$arch" in
-      arm64)        BIN="$P/vaadin-agent-tools-darwin-arm64" ;;
-      x86_64|amd64) BIN="$P/vaadin-agent-tools-darwin-amd64" ;;
-    esac
-    ;;
-  Linux)
-    case "$arch" in
-      x86_64|amd64)  BIN="$P/vaadin-agent-tools-linux-amd64" ;;
-      aarch64|arm64) BIN="$P/vaadin-agent-tools-linux-arm64" ;;
-    esac
-    ;;
-  MINGW*|MSYS*|CYGWIN*)
-    # Git Bash on Windows, which Claude Code uses for Bash tool calls and hooks.
-    BIN="$P/vaadin-agent-tools-windows-amd64.exe"
-    ;;
-esac
+# A run is short and mostly compiling, so trade peak performance for startup.
+JVM_OPTS="-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -XX:-UsePerfData"
 
-if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
-  echo "vaadin-agent-tools: no bundled binary for $os/$arch." >&2
-  echo "Rebuild with go/build.sh, or add the target to the build matrix." >&2
-  exit 2
+# Sets JAVA to the java launcher to use. Fails, saying why on stderr, if there
+# is none.
+find_java() {
+  if [ -n "$JAVA_HOME" ]; then
+    for JAVA in "$JAVA_HOME/bin/java" "$JAVA_HOME/bin/java.exe"; do
+      [ -f "$JAVA" ] && [ -x "$JAVA" ] && return 0
+    done
+    echo "vaadin-agent-tools: JAVA_HOME is set to \"$JAVA_HOME\", which has no bin/java." \
+      "Point it at a JDK 17 or later." >&2
+    return 1
+  fi
+  if JAVA="$(command -v java)" &&
+    # Without a JDK, macOS's /usr/bin/java stub offers to install one in a
+    # dialog. java_home finds out quietly whether there is one to run.
+    { [ "$JAVA" != /usr/bin/java ] || [ ! -x /usr/libexec/java_home ] ||
+      /usr/libexec/java_home >/dev/null 2>&1; }; then
+    return 0
+  fi
+  echo "vaadin-agent-tools: needs Java 17 or later, and found no java on the PATH." \
+    "Install a JDK, or set JAVA_HOME to one." >&2
+  return 1
+}
+
+if [ "$1" = hook ]; then
+  # A hook runs after every file edit, and starting Java to compile the CLI takes
+  # about a second, so first rule out the edits the hook would ignore anyway.
+  # The CLI checks an edited .css file, or a .java edit that introduces one of
+  # the styling APIs in Hook.JAVA_STYLING. Every alternative there contains one
+  # of the words below, and JSON escaping leaves them alone, so an event that
+  # passes the CLI's gates always passes this one. Keep the two in step.
+  payload="$(cat)"
+  if ! printf '%s' "$payload" | grep -qi '\.css'; then
+    printf '%s' "$payload" | grep -qi '\.java' || exit 0
+    printf '%s' "$payload" |
+      grep -qiE 'getstyle\(|classname|cssimport|stylesheet|theme|lumo|aura' || exit 0
+  fi
+  # A hook must never get in the way of an edit: without Java it does nothing,
+  # and whatever happens it exits 0.
+  find_java 2>/dev/null || exit 0
+  printf '%s' "$payload" | "$JAVA" $JVM_OPTS "$SRC" "$@"
+  exit 0
 fi
 
-exec "$BIN" "$@"
+find_java || exit 3
+
+# Fail clearly on a Java too old to compile the CLI, rather than with a page of
+# compiler errors. java -version prints, e.g., openjdk version "17.0.2", or
+# java version "1.8.0_402" for Java 8.
+version="$("$JAVA" -version 2>&1 | sed -n 's/^.* version "\([^"]*\)".*/\1/p' | head -n 1)"
+case "$version" in
+  1.*) major="${version#1.}" ;;
+  *) major="$version" ;;
+esac
+major="${major%%[!0-9]*}"
+if [ -z "$major" ]; then
+  echo "vaadin-agent-tools: $JAVA did not run. Check the Java installation." >&2
+  exit 3
+fi
+if [ "$major" -lt 17 ]; then
+  echo "vaadin-agent-tools: needs Java 17 or later, but $JAVA is Java $major." \
+    "Set JAVA_HOME to a JDK 17 or later." >&2
+  exit 3
+fi
+
+exec "$JAVA" $JVM_OPTS "$SRC" "$@"

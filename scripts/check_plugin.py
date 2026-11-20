@@ -86,6 +86,14 @@ for skill in sorted(os.listdir(skills_dir)):
     if len(f"{codex['name']}:{skill}") > 64:
         fail(f"'{codex['name']}:{skill}' is longer than 64 characters")
 
+# The Claude directory's review holds back a plugin that ships executables or
+# bytecode, which is why the CLI ships as Java source. Recognize compiled code by
+# extension and by its first bytes: ELF, PE, Mach-O (and Java class files, which
+# share the fat Mach-O magic), WebAssembly, and ZIP-based archives such as JARs.
+COMPILED_EXTENSIONS = (".class", ".jar", ".exe", ".dll", ".so", ".dylib", ".wasm", ".pyc", ".zip")
+COMPILED_MAGIC = (b"\x7fELF", b"MZ", b"\xca\xfe\xba\xbe", b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf",
+                  b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe", b"\x00asm", b"PK\x03\x04")
+
 for dirpath, dirnames, filenames in os.walk(ROOT):
     for entry in dirnames + filenames:
         path = os.path.join(dirpath, entry)
@@ -94,11 +102,16 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
             fail(f"symlinks are not allowed: {rel}")
         if entry == ".DS_Store":
             fail(f"remove {rel}")
-    # The Claude directory rejects the plugin; `claude plugin validate` doesn't check this.
     for entry in filenames:
         path = os.path.join(dirpath, entry)
+        rel = os.path.relpath(path, ROOT)
+        # The Claude directory rejects the plugin; `claude plugin validate` doesn't check this.
         if os.path.getsize(path) > 5 * 1024 * 1024:
-            fail(f"{os.path.relpath(path, ROOT)} is over the Claude directory's 5 MiB limit per file")
+            fail(f"{rel} is over the Claude directory's 5 MiB limit per file")
+        with open(path, "rb") as f:
+            head = f.read(4)
+        if entry.lower().endswith(COMPILED_EXTENSIONS) or head.startswith(COMPILED_MAGIC):
+            fail(f"{rel} is compiled code, which holds the plugin back in the Claude directory's review")
 if os.path.isdir(os.path.join(ROOT, "bin")):
     fail("a top-level bin/ directory stops claude.ai and Cowork from installing the plugin")
 
